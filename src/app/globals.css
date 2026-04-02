@@ -1,0 +1,200 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-void: #000000;
+    --color-abyss: #070707;
+    --color-obsidian: #111111;
+    --color-charcoal: #1a1a1a;
+    --color-smoke: #333333;
+    --color-silver: #888888;
+    --color-mercury: #b0b0b0;
+    --color-ice: #f0f0f0;
+    --color-accent: #ff98a2;
+    --color-accent-glow: #ffb3bd;
+    --section-height: 100dvh;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    background-color: #000000;
+    color: #e8e8e8;
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: #000000;
+    color: #e8e8e8;
+    font-family: var(--font-inter), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  ::selection {
+    background-color: rgba(255, 152, 162, 0.4);
+    color: #ffffff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #000000;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #2a2a2a;
+    border-radius: 2px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #ff98a2;
+  }
+
+  /* Premium Accessible Focus State */
+  *:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+    box-shadow: 0 0 0 4px rgba(255, 152, 162, 0.2);
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-strong {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .section-container {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4rem 1.25rem;
+  }
+
+  @media (min-width: 768px) {
+    .section-container {
+      padding: 6rem 4rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .section-container {
+      padding: 8rem 8rem;
+    }
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #ffffff 0%, #ffb3bd 50%, #ff98a2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-subtle {
+    background: linear-gradient(135deg, #e8e8e8 0%, #c0c0c0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 40px rgba(255, 152, 162, 0.15),
+      0 0 80px rgba(255, 152, 162, 0.05);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 40px rgba(255, 152, 162, 0.3),
+      0 0 80px rgba(255, 152, 162, 0.1);
+  }
+
+  .line-accent {
+    position: relative;
+  }
+
+  .line-accent::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, #ff98a2, transparent);
+  }
+
+  .noise-overlay {
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    animation: grain 8s steps(10) infinite;
+  }
+
+  @keyframes grain {
+    0%, 100% { transform: translate(0, 0); }
+    10% { transform: translate(-5%, -10%); }
+    30% { transform: translate(3%, -15%); }
+    50% { transform: translate(12%, 9%); }
+    70% { transform: translate(9%, 4%); }
+    90% { transform: translate(-1%, 7%); }
+  }
+}
+
+@layer utilities {
+  .hide-native-cursor, .hide-native-cursor * {
+    cursor: none !important;
+  }
+  
+  .difference-blend {
+    mix-blend-mode: difference;
+    color: #ffffff;
+  }
+  .will-change-transform {
+    will-change: transform;
+  }
+
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+
+
+
+}
