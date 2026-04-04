@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, forwardRef } from "react";
 import { motion, useMotionValue, useSpring, useMotionTemplate, useTransform } from "framer-motion";
+import Image from "next/image";
 
 export interface XRayRevealProps {
   foregroundSrc: string;
@@ -84,13 +85,21 @@ export const XRayReveal = forwardRef<HTMLDivElement, XRayRevealProps>(({
         [ BASE ] FOREGROUND LAYER 
         ============================== 
       */}
-      <motion.img
-        src={foregroundSrc}
-        alt="Foreground"
-        className="block w-full h-full object-cover transition-transform duration-[1200ms] ease-out select-none"
+      <motion.div
+        className="block w-full h-full relative select-none"
         animate={{ scale: isHovered ? 1.03 : 1 }}
+        transition={{ duration: 1.2, ease: "easeOut" }}
         initial={false}
-      />
+      >
+        <Image
+          src={foregroundSrc}
+          alt="Foreground"
+          fill
+          className="object-cover transition-all duration-[1200ms] ease-out"
+          sizes="(max-width: 768px) 85vw, 50vw"
+          priority={false}
+        />
+      </motion.div>
 
       {/* 
         ==============================
@@ -117,11 +126,15 @@ export const XRayReveal = forwardRef<HTMLDivElement, XRayRevealProps>(({
           initial={false}
         >
           {/* Original generated colors (No filter) */}
-          <img
-            src={backgroundSrc}
-            alt="X-Ray Background"
-            className={`block w-full h-full mix-blend-screen pointer-events-none ${backgroundClassName}`}
-          />
+          <div className="relative w-full h-full">
+            <Image
+              src={backgroundSrc}
+              alt="X-Ray Background"
+              fill
+              className={`block mix-blend-screen pointer-events-none ${backgroundClassName}`}
+              sizes="(max-width: 768px) 85vw, 50vw"
+            />
+          </div>
           {/* Subtle noise over the bones for realism */}
           <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay pointer-events-none" />
         </motion.div>

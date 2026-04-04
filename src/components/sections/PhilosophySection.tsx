@@ -133,41 +133,56 @@ export function PhilosophySection() {
         const count = cards.length;
         const fanAngle = 8; // degrees per card from center
 
-        cards.forEach((card, i) => {
-          const centerIdx = (count - 1) / 2;
-          const offset = i - centerIdx;
-          gsap.fromTo(
-            card,
-            {
-              rotation: 0,
-              x: 0,
-              y: 40,
-              scale: 0.9,
-              opacity: 0,
-              zIndex: count - i,
-            },
-            {
-              rotation: offset * fanAngle,
-              x: offset * 20,
-              y: 0,
-              scale: 1,
-              opacity: 1,
-              duration: 1,
-              delay: i * 0.15,
-              ease: "power4.out",
-              scrollTrigger: { trigger: cardsRef.current, start: "top 78%", toggleActions: "play none none reverse" },
-              onComplete: () => {
-                // After fan, settle to grid
-                gsap.to(card, {
-                  rotation: 0,
-                  x: 0,
-                  duration: 0.6,
-                  delay: 0.3,
-                  ease: "power3.inOut",
-                });
+        const mm = gsap.matchMedia();
+
+        mm.add("(min-width: 768px)", () => {
+          cards.forEach((card, i) => {
+            const centerIdx = (count - 1) / 2;
+            const offset = i - centerIdx;
+            gsap.fromTo(
+              card,
+              {
+                rotation: 0,
+                x: 0,
+                y: 40,
+                scale: 0.9,
+                opacity: 0,
+                zIndex: count - i,
               },
-            }
-          );
+              {
+                rotation: offset * fanAngle,
+                x: offset * 20,
+                y: 0,
+                scale: 1,
+                opacity: 1,
+                duration: 1,
+                delay: i * 0.15,
+                ease: "power4.out",
+                scrollTrigger: { trigger: cardsRef.current, start: "top 78%", toggleActions: "play none none reverse" },
+                onComplete: () => {
+                  gsap.to(card, { rotation: 0, x: 0, duration: 0.6, delay: 0.3, ease: "power3.inOut" });
+                },
+              }
+            );
+          });
+        });
+
+        mm.add("(max-width: 767px)", () => {
+          cards.forEach((card, i) => {
+            gsap.fromTo(
+              card,
+              { y: 30, opacity: 0, scale: 0.98 },
+              {
+                y: 0,
+                opacity: 1,
+                scale: 1,
+                duration: 0.8,
+                delay: i * 0.1,
+                ease: "power2.out",
+                scrollTrigger: { trigger: card, start: "top 90%", toggleActions: "play none none reverse" },
+              }
+            );
+          });
         });
       }
 
@@ -281,7 +296,7 @@ export function PhilosophySection() {
             <div
               key={i}
               role="listitem"
-              className="phil-fan glass rounded-2xl p-8 h-full group hover:border-contrast/20 transition-colors will-change-transform"
+              className="phil-fan glass rounded-2xl p-6 md:p-8 h-full group hover:border-contrast/20 transition-colors will-change-transform"
               style={{ opacity: 0, transformOrigin: "bottom center" }}
             >
               <div className="space-y-4">

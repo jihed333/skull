@@ -1,26 +1,23 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useState, useRef, useCallback } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { useScroll } from "framer-motion";
 
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { HeroSection } from "@/components/sections/HeroSection";
+
+// --- Static Section Imports ---
 import { AboutSection } from "@/components/sections/AboutSection";
-import { PortraitSection } from "@/components/sections/PortraitSection";
 import { TechStackSection } from "@/components/sections/TechStackSection";
+import { PortraitSection } from "@/components/sections/PortraitSection";
 import { ProjectSection } from "@/components/sections/ProjectSection";
 import { ExperienceSection } from "@/components/sections/ExperienceSection";
 import { PhilosophySection } from "@/components/sections/PhilosophySection";
-import { ScrollingTextSection } from "@/components/sections/ScrollingTextSection";
 import { ContactSection } from "@/components/sections/ContactSection";
+import { TextDropSection } from "@/components/sections/TextDropSection";
 
 import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";
-
-const Scene = dynamic(() => import("@/components/canvas/Scene"), {
-    ssr: false,
-});
 
 export default function Home() {
     const [isLoading, setIsLoading] = useState(true);
@@ -30,31 +27,17 @@ export default function Home() {
     }, []);
 
     const projectsWrapperRef = useRef<HTMLDivElement>(null);
-    const { scrollYProgress } = useScroll({
+
+    useScroll({
         target: projectsWrapperRef,
         offset: ["start end", "end start"],
     });
-
-    // Horizontal slide faster
-    const bgTextX = useTransform(
-        scrollYProgress,
-        [0, 0.03, 0.6, 1],
-        ["150%", "0%", "-100%", "-150%"]
-    );
-
-    // Smooth opacity curve
-    const bgTextOpacity = useTransform(
-        scrollYProgress,
-        [0, 0.05, 0.7, 1],
-        [0, 0.06, 0.06, 0]
-    );
 
     useSectionTransition();
 
     return (
         <>
             {isLoading && <LoadingScreen onComplete={handleLoadingComplete} />}
-            <Scene />
 
             <main
                 className="relative z-10 w-full overflow-x-hidden"
@@ -64,39 +47,46 @@ export default function Home() {
                     pointerEvents: isLoading ? "none" : "auto",
                 }}
             >
+                {/* Hero is always visible above the fold */}
                 <HeroSection />
-                <AboutSection />
-                <TechStackSection />
+
+                <div className="mt-24 md:mt-32 lg:mt-40">
+                    <AboutSection />
+                </div>
+
+                <div className="mt-0">
+                    <TechStackSection />
+                </div>
 
                 <div
                     id="projects-wrapper"
                     ref={projectsWrapperRef}
-                    className="relative z-[1]"
+                    className="relative z-[1] mt-32 md:mt-40 lg:mt-48"
                 >
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-                        <div className="sticky top-[51%] left-0 w-full">
-                            <motion.div
-                                style={{ x: bgTextX, opacity: bgTextOpacity }}
-                                className="whitespace-nowrap select-none"
-                            >
-                                <span className="font-display text-[18vw] md:text-[22vw] font-black text-white leading-none uppercase tracking-tighter difference-blend">
-                                    •••••••• TO THE GLORY ••••••••
-                                </span>
-                            </motion.div>
-                        </div>
-                    </div>
+                    {PROJECTS.map((project, i) => (
+                        <ProjectSection key={i} index={i} {...project} />
+                    ))}
 
-                    <div className="relative z-10">
-                        {PROJECTS.map((project, i) => (
-                            <ProjectSection key={i} index={i} {...project} />
-                        ))}
-
+                    <div className="mt-32 md:mt-40 lg:mt-48">
                         <ExperienceSection />
-                        <PhilosophySection />
-                        <ScrollingTextSection />
-                        <PortraitSection />
-                        <ContactSection />
                     </div>
+
+                    <div className="mt-32 md:mt-40 lg:mt-48">
+                        <PhilosophySection />
+                    </div>
+
+                    <TextDropSection />
+                </div>
+
+                {/* Portrait + contact must NOT live inside #projects-wrapper: that node gets a
+                    GSAP translateY from useSectionTransition, which turns it into a containing
+                    block and breaks ScrollTrigger pin / fixed layering (black viewport glitches). */}
+                <div className="relative z-[1] mt-0 w-full">
+                    <PortraitSection />
+                </div>
+
+                <div className="relative z-[1] mt-0 w-full">
+                    <ContactSection />
                 </div>
             </main>
         </>

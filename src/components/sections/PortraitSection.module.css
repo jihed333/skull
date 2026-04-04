@@ -1,0 +1,58 @@
+/* PortraitSection.module.css */
+
+.section {
+  position: relative;
+  width: 100%;
+  background-color: #080808;
+}
+
+.wrap {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes marqueeRev {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.85; }
+  94% { opacity: 1; }
+  96% { opacity: 0.9; }
+  97% { opacity: 1; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.marquee {
+  animation: marquee 40s linear infinite;
+}
+
+.marqueeRev {
+  animation: marqueeRev 40s linear infinite;
+}
+
+.portraitChar {
+  overflow: hidden;
+  display: inline-block;
+}
+
+.portraitChar span {
+  display: inline-block;
+}
+
+.flicker {
+  animation: flicker 4s infinite;
+}
