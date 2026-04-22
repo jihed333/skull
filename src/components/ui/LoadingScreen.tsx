@@ -10,6 +10,7 @@ interface LoadingScreenProps {
 export function LoadingScreen({ onComplete }: LoadingScreenProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null); // ← NEW
   const barTrackRef = useRef<HTMLDivElement>(null);
   const barFillRef = useRef<HTMLDivElement>(null);
   const percentRef = useRef<HTMLDivElement>(null);
@@ -20,12 +21,31 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
   const [progress, setProgress] = useState(0);
   const exitedRef = useRef(false);
 
+  // ── iOS Safari autoplay fix ──
+  // React's autoPlay prop alone isn't enough on iOS — a programmatic
+  // .play() call is required. We also catch the promise so the console
+  // stays clean if the browser rejects it for any reason.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.muted = true;        // must be muted before calling play()
+    video.playsInline = true;  // keeps video inline, not fullscreen on iOS
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        // Auto-play was prevented — nothing to do, video just won't autoplay.
+        // The muted+playsInline combo means this should never happen in practice.
+      });
+    }
+  }, []);
+
   // ── Entrance animation ──
   useEffect(() => {
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ delay: 0.3 });
 
-      // Subtitle fades in
       tl.fromTo(
         subtitleRef.current,
         { opacity: 0 },
@@ -33,7 +53,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         0.9
       );
 
-      // Progress bar track fades in
       tl.fromTo(
         barTrackRef.current,
         { opacity: 0, scaleX: 0 },
@@ -41,7 +60,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         1.0
       );
 
-      // Percent fades in
       tl.fromTo(
         percentRef.current,
         { opacity: 0 },
@@ -57,7 +75,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
   useEffect(() => {
     let raf: number;
     const start = performance.now();
-    const duration = 4000; 
+    const duration = 4000;
 
     const tick = (now: number) => {
       const elapsed = now - start;
@@ -84,7 +102,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
       onComplete: () => onComplete(),
     });
 
-    // 1) Fade out text elements
     tl.to(
       [subtitleRef.current, barTrackRef.current, percentRef.current],
       {
@@ -96,7 +113,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
       }
     );
 
-    // 2) Video zooms subtly and fades
     tl.to(
       videoContainerRef.current,
       {
@@ -108,7 +124,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
       "-=0.2"
     );
 
-    // 3) Curtain split — two panels slide apart
     tl.to(
       curtainLeftRef.current,
       {
@@ -125,7 +140,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         duration: 0.9,
         ease: "power4.inOut",
       },
-      "<" // same time as left curtain
+      "<"
     );
   }, [onComplete]);
 
@@ -165,7 +180,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         }}
       />
 
-      {/* ── Content layer (sits on top of curtains) ── */}
+      {/* ── Content layer ── */}
       <div
         style={{
           position: "relative",
@@ -192,10 +207,12 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
           }}
         >
           <video
+            ref={videoRef}          // ← NEW
             src="/202603272234.mp4"
             autoPlay
             muted
             playsInline
+            loop
             style={{
               width: "100%",
               height: "100%",
@@ -238,8 +255,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
             style={{
               width: `${progress * 100}%`,
               height: "100%",
-              background:
-                "linear-gradient(90deg, transparent, #ff98a2)",
+              background: "linear-gradient(90deg, transparent, #ff98a2)",
               transition: "width 0.12s linear",
               boxShadow: "0 0 12px rgba(255, 152, 162, 0.4)",
             }}
@@ -261,7 +277,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         </div>
       </div>
 
-      {/* ── Ambient vertical lines for depth ── */}
+      {/* ── Ambient vertical lines ── */}
       <div
         style={{
           position: "absolute",
@@ -271,7 +287,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
           overflow: "hidden",
         }}
       >
-        {/* Left accent line */}
         <div
           style={{
             position: "absolute",
@@ -283,7 +298,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
               "linear-gradient(to bottom, transparent 20%, rgba(255,152,162,0.04) 50%, transparent 80%)",
           }}
         />
-        {/* Right accent line */}
         <div
           style={{
             position: "absolute",

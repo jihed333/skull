@@ -4,7 +4,6 @@ import { useState, useRef, useCallback } from "react";
 import { useScroll } from "framer-motion";
 
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
-import { HeroSection } from "@/components/sections/HeroSection";
 
 // --- Static Section Imports ---
 import { AboutSection } from "@/components/sections/AboutSection";
@@ -14,7 +13,9 @@ import { ProjectSection } from "@/components/sections/ProjectSection";
 import { ExperienceSection } from "@/components/sections/ExperienceSection";
 import { PhilosophySection } from "@/components/sections/PhilosophySection";
 import { ContactSection } from "@/components/sections/ContactSection";
-import { TextDropSection } from "@/components/sections/TextDropSection";
+import { WordRevealSection } from "@/components/sections/WordRevealSection";
+import { GlobalSkullCanvas } from "@/components/canvas/GlobalSkullCanvas";
+import Scene from "@/components/canvas/Scene";
 
 import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";
@@ -47,14 +48,21 @@ export default function Home() {
                     pointerEvents: isLoading ? "none" : "auto",
                 }}
             >
-                {/* Hero is always visible above the fold */}
-                <HeroSection />
+                {/* Global skull canvas — moved inside main so it shares the stacking context */}
+                {!isLoading && <GlobalSkullCanvas />}
+                {!isLoading && <Scene />}
 
-                <div className="mt-24 md:mt-32 lg:mt-40">
+                {/* Portrait shell above skull; jihed img clip-path reveals WebGL skull with scan */}
+                <div className="relative z-[40] mt-0 w-full">
+                    <PortraitSection />
+                </div>
+
+                <div className="relative z-[40] mt-24 md:mt-32 lg:mt-40">
                     <AboutSection />
                 </div>
 
-                <div className="mt-0">
+                {/* Tech Stack section covers the skull with higher z-index and dark BG */}
+                <div className="relative z-[60] mt-0 bg-[#080808]">
                     <TechStackSection />
                 </div>
 
@@ -71,21 +79,17 @@ export default function Home() {
                         <ExperienceSection />
                     </div>
 
-                    <div className="mt-32 md:mt-40 lg:mt-48">
+                    <div id="philosophy-section" className="mt-12 md:mt-16 lg:mt-24">
                         <PhilosophySection />
                     </div>
-
-                    <TextDropSection />
                 </div>
 
-                {/* Portrait + contact must NOT live inside #projects-wrapper: that node gets a
-                    GSAP translateY from useSectionTransition, which turns it into a containing
-                    block and breaks ScrollTrigger pin / fixed layering (black viewport glitches). */}
-                <div className="relative z-[1] mt-0 w-full">
-                    <PortraitSection />
-                </div>
+                {/* Pin + scroll-scrub text — must stay outside #projects-wrapper (see useSectionTransition) */}
+                <WordRevealSection />
 
-                <div className="relative z-[1] mt-0 w-full">
+                {/* Contact must NOT live inside #projects-wrapper to prevent GSAP layering glitches. */}
+
+                <div className="relative z-[150] mt-0 w-full">
                     <ContactSection />
                 </div>
             </main>

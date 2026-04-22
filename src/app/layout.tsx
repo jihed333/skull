@@ -4,6 +4,7 @@ import "./globals.css";
 import { SmoothScrollProvider } from "@/components/providers/SmoothScrollProvider";
 import { CustomCursor } from "@/components/ui/CustomCursor";
 import { AwwwardsHUD } from "@/components/ui/AwwwardsHUD";
+import { GlobalBackground } from "@/components/ui/GlobalBackground";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -41,6 +42,7 @@ export default function RootLayout({
                 className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased bg-void text-mercury`}
             >
                 <SmoothScrollProvider>
+                    <GlobalBackground />
                     <CustomCursor />
                     <AwwwardsHUD />
                     <div className="noise-overlay" aria-hidden="true" />

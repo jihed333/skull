@@ -218,8 +218,8 @@ export function ProjectSection({
                     <div className="lg:col-span-3 space-y-6">
                         {/* Title: horizontal split-lock */}
                         <h2 ref={titleRef} className="font-display text-display-md font-bold relative">
-                            <span className="title-top block" style={{ opacity: 0 }}>{title}</span>
-                            <span className="title-bottom block absolute top-0 left-0 w-full" style={{ opacity: 0 }}>
+                            <span className="title-top block bg-gradient-to-r from-[#ff98a2] to-[#888888] bg-clip-text text-transparent" style={{ opacity: 0 }}>{title}</span>
+                            <span className="title-bottom block absolute top-0 left-0 w-full bg-gradient-to-r from-[#ff98a2] to-[#888888] bg-clip-text text-transparent" style={{ opacity: 0 }}>
                                 {title}
                             </span>
                         </h2>

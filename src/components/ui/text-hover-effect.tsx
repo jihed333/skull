@@ -8,11 +8,21 @@ export const TextHoverEffect = ({
     duration = 0.4,
     opacity = 1,
     onReady,
+    viewBox = "0 0 700 160",
+    fontSize = 64,
+    fontWeight = 700,
+    fontStyle = "normal",
+    textColor = "rgba(255,255,255,0.95)",
 }: {
     text: string;
     duration?: number;
     opacity?: number;
     onReady?: () => void;
+    viewBox?: string;
+    fontSize?: number | string;
+    fontWeight?: number | string;
+    fontStyle?: string;
+    textColor?: string;
 }) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const maskGradientRef = useRef<SVGRadialGradientElement>(null);
@@ -93,7 +103,7 @@ export const TextHoverEffect = ({
             ref={svgRef}
             width="100%"
             height="100%"
-            viewBox="0 0 700 160"
+            viewBox={viewBox}
             xmlns="http://www.w3.org/2000/svg"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
@@ -158,15 +168,16 @@ export const TextHoverEffect = ({
                     className="fill-transparent"
                     stroke={
                         idx === 0 || idx === 1
-                            ? "rgba(255,255,255,0.95)"
+                            ? textColor
                             : "url(#textGradient)"
                     }
                     mask={idx === 2 ? "url(#textMask)" : undefined}
                     style={{
-                        fontSize: 64,
+                        fontSize: fontSize,
                         fontFamily:
                             "var(--font-space-grotesk), Helvetica, sans-serif",
-                        fontWeight: 700,
+                        fontWeight: fontWeight,
+                        fontStyle: fontStyle,
                         letterSpacing: "0.04em",
                         opacity: idx === 0 && !hovered ? 0 : idx === 0 ? 0.35 : 1,
                         transition: idx === 0 ? "opacity 0.6s ease" : "none",

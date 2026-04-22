@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { forwardRef, useRef, useMemo, useLayoutEffect } from 'react';
+import { forwardRef, useRef, useMemo, useLayoutEffect, useState, useEffect } from 'react';
 import * as THREE from 'three';
 
 const hexToNormalizedRGB = (hex: string): [number, number, number] => {
@@ -115,7 +115,27 @@ interface SilkProps {
 }
 
 const Silk = ({ speed = 5, scale = 1, color = '#7B7481', noiseIntensity = 1.5, rotation = 0 }: SilkProps) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const meshRef = useRef<THREE.Mesh>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { 
+        rootMargin: '500px', // Wake up much earlier
+        threshold: 0 
+      }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
 
   const uniforms = useMemo(
     () => ({
@@ -130,13 +150,27 @@ const Silk = ({ speed = 5, scale = 1, color = '#7B7481', noiseIntensity = 1.5, r
   );
 
   return (
-    <Canvas 
-      dpr={[1, 1.5]} 
-      frameloop="always" 
-      gl={{ antialias: false, powerPreference: "high-performance" }}
+    <div 
+      ref={containerRef} 
+      className="w-full h-full transition-opacity duration-500"
+      style={{ 
+        opacity: isVisible ? 1 : 0,
+        visibility: isVisible ? 'visible' : 'hidden',
+        pointerEvents: isVisible ? 'auto' : 'none'
+      }}
     >
-      <SilkPlane ref={meshRef} uniforms={uniforms} />
-    </Canvas>
+      <Canvas 
+        dpr={[1, 1.5]} 
+        frameloop={isVisible ? "always" : "never"} 
+        gl={{ 
+          antialias: false, 
+          powerPreference: "high-performance",
+          alpha: true 
+        }}
+      >
+        <SilkPlane ref={meshRef} uniforms={uniforms} />
+      </Canvas>
+    </div>
   );
 };
 
