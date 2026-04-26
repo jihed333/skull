@@ -216,3 +216,80 @@
 
 
 }
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE FIXES — added to resolve scroll jitter / trembling
+   ═══════════════════════════════════════════════════════════════ */
+
+@layer base {
+  /* FIX 9: Set --vh custom property via CSS dvh (JS fills it too via useEffect).
+     100dvh = dynamic viewport height that adjusts as the mobile URL bar hides/shows,
+     eliminating the #1 cause of layout-shift jitter on mobile. */
+  :root {
+    --section-height: 100dvh;
+  }
+
+  /* FIX 10: Prevent the noise overlay from causing scroll-width expansion.
+     The noise-overlay is positioned fixed at -50%/-50% with 200% width/height.
+     On some mobile browsers this creates a ghost scroll area. Clip it. */
+  .noise-overlay {
+    overflow: hidden;
+    /* Extra protection: contain within the viewport */
+    contain: strict;
+  }
+
+  /* FIX 11: Mobile touch scroll behaviour.
+     touch-action: pan-y tells the browser to handle vertical scroll natively
+     WITHOUT waiting for JS event handlers to decide. This eliminates a big
+     source of scroll delay and jitter on mobile. */
+  @media (pointer: coarse) {
+    html {
+      touch-action: pan-y;
+      /* Disable scroll-behavior smooth on mobile — Lenis is already disabled,
+         and CSS smooth scroll can fight native momentum scrolling */
+      scroll-behavior: auto !important;
+    }
+
+    /* FIX 12: Hide the custom cursor on mobile — it's mouse-only and causes
+       a useless pointer-events overhead on touch devices */
+    [data-cursor],
+    .cursor-dot,
+    .cursor-ring {
+      display: none !important;
+    }
+
+    /* FIX 13: Disable will-change on mobile to reduce GPU memory pressure.
+       Too many layers with will-change causes compositing budget exhaustion
+       which makes the browser drop frames = jitter. */
+    .will-change-transform {
+      will-change: auto;
+    }
+  }
+
+  /* FIX 14: Prevent horizontal scroll — belt AND suspenders.
+     overflow-x: hidden on both html AND body is required because on some
+     mobile browsers, setting it on just one doesn't clip absolutely/fixed elements. */
+  html, body {
+    overflow-x: clip; /* stronger than hidden — doesn't create scroll container */
+    max-width: 100%;
+  }
+}
+
+@layer components {
+  /* FIX 15: Marquee overflow containment.
+     Marquee items extend to 12x the text width. Without overflow:hidden on
+     the wrapper, this creates a horizontal scroll ghost that breaks page width. */
+  .marquee-wrapper {
+    overflow: hidden;
+    contain: content;
+  }
+}
+
+/* FIX 16: Reduced motion — kill ALL animations on mobile prefers-reduced-motion.
+   This also catches users who get sick from animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

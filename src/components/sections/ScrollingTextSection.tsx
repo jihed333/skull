@@ -70,8 +70,8 @@ export function ScrollingTextSection() {
     return (
         <section
             ref={sectionRef}
-            className="relative w-full h-screen overflow-hidden bg-transparent z-30"
-            style={{ perspective: "1500px" }}
+            className="relative w-full h-[100dvh] overflow-hidden bg-transparent z-30"
+            style={{ perspective: "1500px", height: "calc(var(--vh, 1vh) * 100)" }}
         >
             <div className="absolute inset-0 flex items-center justify-center px-6 md:px-12">
                 <div 

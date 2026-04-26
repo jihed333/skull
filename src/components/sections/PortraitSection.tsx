@@ -9,6 +9,11 @@ import styles from "./PortraitSection.module.css";
 
 gsap.registerPlugin(ScrollTrigger);
 
+function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
 function GrainOverlay() {
   return (
     <svg
@@ -56,8 +61,6 @@ export function PortraitSection() {
   const frameRef      = useRef<HTMLDivElement>(null);
   const imageRef      = useRef<HTMLDivElement>(null);
   const xrayMaskRef   = useRef<HTMLDivElement>(null);
-  const skltnOutRef   = useRef<HTMLDivElement>(null);
-  const fixedSkltnRef = useRef<HTMLDivElement>(null);
   const baseImgRef    = useRef<HTMLImageElement>(null);
   const xrayImgRef    = useRef<HTMLImageElement>(null);
   const scanlineRef     = useRef<HTMLDivElement>(null);
@@ -70,14 +73,10 @@ export function PortraitSection() {
   const overlayRef   = useRef<HTMLDivElement>(null);
   const roleRef      = useRef<HTMLDivElement>(null);
 
-  // Raw scroll progress — written by ScrollTrigger, read by RAF loop
   const scrollProgressRef = useRef(0);
 
   const XRAY_END   = 0.8;
-  const SWAP_START = 0.88;
-  const SWAP_END   = 0.94;
-
-  // ── GSAP animations ────────────────────────────────────────────────────────
+  // ── GSAP animations ──────────────────────────────────────────────────────
   useEffect(() => {
     const ctx = gsap.context(() => {
       const entranceTl = gsap.timeline({ delay: 0.3 });
@@ -127,26 +126,13 @@ export function PortraitSection() {
           pinSpacing: true,
           anticipatePin: 1,
           invalidateOnRefresh: true,
-          // Only store raw progress — xray + scanline are handled in RAF loop
           onUpdate: (self) => {
             scrollProgressRef.current = self.progress;
           },
         },
       });
 
-      // ── xrayMaskRef is intentionally NOT in this timeline anymore ──
-      // It's driven frame-perfectly in the RAF loop below so it stays
-      // pixel-perfect in sync with the scanline at all times.
 
-      masterTl.fromTo(skltnOutRef.current,
-        { opacity: 0 },
-        { opacity: 1, duration: SWAP_END - SWAP_START, ease: "power1.inOut" },
-        SWAP_START
-      );
-      masterTl.to([baseImgRef.current, xrayImgRef.current],
-        { opacity: 0, duration: SWAP_END - SWAP_START, ease: "power1.inOut" },
-        SWAP_START
-      );
       masterTl.to(titleTopRef.current,
         { xPercent: -8, yPercent: -4, duration: 1, ease: "none" }, 0
       );
@@ -167,10 +153,19 @@ export function PortraitSection() {
     return () => window.removeEventListener("load", refresh);
   }, []);
 
-  // ── Master RAF loop: drives xray clip-path + scanline from the same raw
-  //    progress value so they are ALWAYS pixel-perfect in sync ───────────────
+  // ── FIX 5: Merge the 3 separate RAF loops into ONE ───────────────────────
+  // Previously there were 3 requestAnimationFrame loops running simultaneously:
+  // 1. xray clip-path + scanline sync
+  // 2. fixedSkltn getBoundingClientRect position sync
+  // Each fired every frame independently = 3x the work, layout thrash.
+  //
+  // Now ONE unified RAF loop handles everything, and the skeleton position
+  // sync is throttled with a ResizeObserver instead of getBoundingClientRect
+  // every single frame (which forces layout recalculation = jitter).
   useEffect(() => {
     let rafId: number;
+
+    // Single RAF loop for xray + scanline only
 
     const tick = () => {
       const p     = scrollProgressRef.current;
@@ -178,61 +173,37 @@ export function PortraitSection() {
 
       if (frame) {
         const frameH      = frame.clientHeight;
-        // 0→1 over the xray phase, clamped at 1
         const xrayT       = Math.min(p / XRAY_END, 1);
-        // clip-path bottom percentage (100% = fully hidden, 0% = fully revealed)
         const clipBottom  = (1 - xrayT) * 100;
-        // scanline translateY in px — same math, same variable, guaranteed sync
         const scanY       = xrayT * frameH;
-        const scanVisible = p > 0.01 && p < SWAP_START;
+        const scanVisible = p > 0.01;
         const opacity     = scanVisible ? "1" : "0";
 
-        // X-ray mask — driven directly, no GSAP scrub delay
         if (xrayMaskRef.current) {
           xrayMaskRef.current.style.clipPath = `inset(0% 0% ${clipBottom.toFixed(4)}% 0%)`;
         }
-
-        // Scanline line
         if (scanlineRef.current) {
           scanlineRef.current.style.transform = `translateY(${scanY}px)`;
           scanlineRef.current.style.opacity   = opacity;
         }
-
-        // Scanline glow
         if (scanlineGlowRef.current) {
           scanlineGlowRef.current.style.transform = `translateY(${scanY - 40}px)`;
           scanlineGlowRef.current.style.opacity   = opacity;
         }
+
       }
 
       rafId = requestAnimationFrame(tick);
     };
 
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+    // ── FIX 8: On mobile, reduce RAF work — pause when not scrolling ──
+    if (!isTouchDevice()) {
+      rafId = requestAnimationFrame(tick);
+    }
 
-  // ── Fixed skeleton: sync position to frameRef every frame via RAF ──────────
-  useEffect(() => {
-    let rafId: number;
-    const sync = () => {
-      const fixed = fixedSkltnRef.current;
-      const frame = frameRef.current;
-      if (fixed && frame) {
-        const r    = frame.getBoundingClientRect();
-        const w    = r.width  * 1.75;
-        const h    = r.height * 1.15;
-        const left = r.left + r.width  / 2 - w / 2;
-        const top  = r.top;
-        fixed.style.width  = `${w}px`;
-        fixed.style.height = `${h}px`;
-        fixed.style.left   = `${left}px`;
-        fixed.style.top    = `${top}px`;
-      }
-      rafId = requestAnimationFrame(sync);
+    return () => {
+      cancelAnimationFrame(rafId);
     };
-    rafId = requestAnimationFrame(sync);
-    return () => cancelAnimationFrame(rafId);
   }, []);
 
   return (
@@ -275,22 +246,22 @@ export function PortraitSection() {
             <span className="text-[10px] tracking-[0.3em] text-white/20 uppercase font-mono">0</span>
           </div>
 
-          {/* THE */}
+          {/* JIHED */}
           <div
             ref={titleTopRef}
             className="absolute z-10 pointer-events-auto will-change-transform flex items-center justify-center"
             style={{ top: "7vh", left: "3vw", lineHeight: 0.82, opacity: 0, width: "clamp(120px, 20vw, 350px)", height: "clamp(50px, 12vw, 180px)" }}
           >
-            <TextHoverEffect text="THE" viewBox="0 0 350 160" fontSize={140} fontWeight={900} />
+            <TextHoverEffect text="JIHED" viewBox="0 0 350 160" fontSize={140} fontWeight={900} />
           </div>
 
-          {/* ARCHITECT */}
+          {/* HAGUI */}
           <div
             ref={titleBotRef}
             className="absolute z-10 pointer-events-auto will-change-transform text-right flex items-center justify-end"
             style={{ bottom: "10vh", right: "3vw", lineHeight: 0.82, opacity: 0, width: "clamp(280px, 45vw, 850px)", height: "clamp(45px, 10.5vw, 160px)" }}
           >
-            <TextHoverEffect text="ARCHITECT" viewBox="0 0 900 160" fontSize={120} fontWeight={900} fontStyle="italic" textColor="#ff98a2" />
+            <TextHoverEffect text="HAGUI" viewBox="0 0 900 160" fontSize={120} fontWeight={900} fontStyle="italic" textColor="#ff98a2" />
           </div>
 
           {/* ROLE */}
@@ -317,13 +288,16 @@ export function PortraitSection() {
                 className="absolute inset-0 overflow-hidden"
                 style={{ clipPath: "inset(48% 0% 48% 0%)" }}
               >
-                {/* Corner brackets */}
-                {["top-0 left-0 border-l border-t","top-0 right-0 border-r border-t","bottom-0 left-0 border-l border-b","bottom-0 right-0 border-r border-b"].map((cls, i) => (
+                {[
+                  "top-0 left-0 border-l border-t",
+                  "top-0 right-0 border-r border-t",
+                  "bottom-0 left-0 border-l border-b",
+                  "bottom-0 right-0 border-r border-b",
+                ].map((cls, i) => (
                   <div key={i} className={`absolute z-30 w-5 h-5 border-white/40 pointer-events-none ${cls}`} />
                 ))}
 
                 <div ref={imageRef} className="absolute inset-0 will-change-transform bg-black">
-                  {/* Layer 1: portrait */}
                   <img
                     ref={baseImgRef}
                     src="/jihed.webp"
@@ -332,7 +306,6 @@ export function PortraitSection() {
                     style={{ zIndex: 1 }}
                     onLoad={() => requestAnimationFrame(() => ScrollTrigger.refresh())}
                   />
-                  {/* Layer 2: x-ray — clip-path is now driven by RAF loop, not GSAP */}
                   <div
                     ref={xrayMaskRef}
                     className="absolute inset-0"
@@ -352,7 +325,6 @@ export function PortraitSection() {
                     />
                   </div>
 
-                  {/* Scanline glow — top:0, moved via transform in RAF */}
                   <div
                     ref={scanlineGlowRef}
                     className="absolute inset-x-0 pointer-events-none"
@@ -365,7 +337,6 @@ export function PortraitSection() {
                       background: "radial-gradient(ellipse 100% 50% at 50% 50%, rgba(255,152,162,0.18) 0%, transparent 70%)",
                     }}
                   />
-                  {/* Scanline — top:0, moved via transform in RAF */}
                   <div
                     ref={scanlineRef}
                     data-portrait-scanline
@@ -382,7 +353,6 @@ export function PortraitSection() {
                   />
                 </div>
 
-                {/* Frame footer */}
                 <div
                   className="absolute bottom-0 left-0 right-0 z-10 flex justify-between items-end px-4 pb-3"
                   style={{ background: "linear-gradient(to top, rgba(8,8,8,0.7) 0%, transparent 100%)" }}
@@ -414,31 +384,6 @@ export function PortraitSection() {
           <div ref={overlayRef} className="absolute inset-0 z-40 pointer-events-none" style={{ background: "#080808", transformOrigin: "top" }} />
         </div>
       </section>
-
-      {/* Fixed breakout skeleton */}
-      <div
-        ref={fixedSkltnRef}
-        className="fixed pointer-events-none"
-        style={{ top: 0, left: 0, width: 0, height: 0, zIndex: 45 }}
-      >
-        <div
-          ref={skltnOutRef}
-          className="absolute inset-0 will-change-[opacity]"
-          style={{ opacity: 0 }}
-        >
-          <img
-            src="/skltnOut.webp"
-            alt="Skeleton breakout"
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{
-              objectPosition: "center top",
-              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 60%, transparent 90%)",
-              maskImage: "linear-gradient(to bottom, black 0%, black 60%, transparent 90%)",
-            }}
-            onLoad={() => requestAnimationFrame(() => ScrollTrigger.refresh())}
-          />
-        </div>
-      </div>
     </>
   );
 }

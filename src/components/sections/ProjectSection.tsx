@@ -218,8 +218,8 @@ export function ProjectSection({
                     <div className="lg:col-span-3 space-y-6">
                         {/* Title: horizontal split-lock */}
                         <h2 ref={titleRef} className="font-display text-display-md font-bold relative">
-                            <span className="title-top block bg-gradient-to-r from-[#ff98a2] to-[#888888] bg-clip-text text-transparent" style={{ opacity: 0 }}>{title}</span>
-                            <span className="title-bottom block absolute top-0 left-0 w-full bg-gradient-to-r from-[#ff98a2] to-[#888888] bg-clip-text text-transparent" style={{ opacity: 0 }}>
+                            <span className="title-top block bg-gradient-to-r from-white to-white/40 bg-clip-text text-transparent" style={{ opacity: 0 }}>{title}</span>
+                            <span className="title-bottom block absolute top-0 left-0 w-full bg-gradient-to-r from-white to-white/40 bg-clip-text text-transparent" style={{ opacity: 0 }}>
                                 {title}
                             </span>
                         </h2>
@@ -238,7 +238,7 @@ export function ProjectSection({
                             {tags.map((tag) => (
                                 <span
                                     key={tag}
-                                    className="tag-orbit px-3 py-1 text-xs font-mono tracking-wider uppercase border border-grey/10 rounded-full text-grey/50 hover:border-contrast/30 hover:text-contrast transition-colors will-change-transform"
+                                    className="tag-orbit px-3 py-1 text-xs font-mono tracking-wider uppercase border border-accent/20 rounded-full text-accent/70 hover:border-accent/50 hover:text-accent transition-colors will-change-transform"
                                     style={{ opacity: 0 }}
                                 >
                                     {tag}

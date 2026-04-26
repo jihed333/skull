@@ -1,469 +1,213 @@
 "use client";
 
-import React, { useRef, useEffect, useCallback } from "react";
-import { motion, useInView } from "framer-motion";
+import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
-/* ─────────────────────────────────────────────
-   CinematicText — GSAP split-character reveal
-   Characters rise through a clipPath mask with
-   subtle rotateX tilt and staggered timing.
-   ───────────────────────────────────────────── */
-
-interface CinematicTextProps {
-    text: string;
-    className?: string;
-    delay?: number;
-    stagger?: number;
-    as?: "h1" | "h2" | "h3" | "span" | "p";
-    scrub?: boolean;
+function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches;
 }
 
-export function CinematicText({
-    text,
-    className = "",
-    delay = 0,
-    stagger = 0.03,
-    as: Tag = "span",
-    scrub = false,
-}: CinematicTextProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
+const PARAGRAPH_WORDS = [
+  { text: "Every", accent: false },
+  { text: "profound", accent: true },
+  { text: "creation", accent: false },
+  { text: "begins", accent: false },
+  { text: "in", accent: false },
+  { text: "the", accent: false },
+  { text: "space", accent: true },
+  { text: "between", accent: false },
+  { text: "restraint", accent: true },
+  { text: "and", accent: false },
+  { text: "freedom—", accent: false },
+  { text: "where", accent: false },
+  { text: "the", accent: false },
+  { text: "discipline", accent: true },
+  { text: "of", accent: false },
+  { text: "removal", accent: false },
+  { text: "meets", accent: false },
+  { text: "the", accent: false },
+  { text: "courage", accent: true },
+  { text: "to", accent: false },
+  { text: "preserve", accent: false },
+  { text: "what", accent: false },
+  { text: "is", accent: false },
+  { text: "essential", accent: true },
+  { text: "to", accent: false },
+  { text: "the", accent: false },
+  { text: "human", accent: false },
+  { text: "experience.", accent: false },
+];
 
-    useEffect(() => {
-        const el = containerRef.current;
-        if (!el) return;
+export function WordRevealSection() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const paragraphRef = useRef<HTMLParagraphElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+  const progressLblRef = useRef<HTMLSpanElement>(null);
+  const afterRef = useRef<HTMLDivElement>(null);
 
-        const chars = el.querySelectorAll(".ct-char");
-        if (!chars.length) return;
+  useEffect(() => {
+    const section = sectionRef.current;
+    const paragraph = paragraphRef.current;
+    if (!section || !paragraph) return;
 
-        const tl = gsap.timeline({
-            scrollTrigger: scrub
-                ? {
-                    trigger: el,
-                    start: "top 85%",
-                    end: "top 40%",
-                    scrub: 1,
-                }
-                : {
-                    trigger: el,
-                    start: "top 85%",
-                    toggleActions: "play none none reverse",
-                },
-            delay: scrub ? 0 : delay,
-        });
+    const ctx = gsap.context(() => {
+      const words = paragraph.querySelectorAll<HTMLSpanElement>(".word");
+      if (!words.length) return;
 
-        tl.fromTo(
-            chars,
-            {
-                y: "110%",
-                rotateX: 90,
-                opacity: 0,
-            },
-            {
-                y: "0%",
-                rotateX: 0,
-                opacity: 1,
-                duration: 1,
-                stagger: stagger,
-                ease: "power4.out",
-            }
-        );
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-        return () => {
-            tl.kill();
-        };
-    }, [text, delay, stagger, scrub]);
+      if (reduced) {
+        gsap.set(words, { opacity: 1, x: 0, filter: "blur(0px)", scale: 1 });
+        if (progressRef.current) progressRef.current.style.width = "100%";
+        if (progressLblRef.current) progressLblRef.current.textContent = "100%";
+        if (afterRef.current) gsap.set(afterRef.current, { opacity: 1, y: 0 });
+        return;
+      }
 
-    const words = text.split(" ");
+      // ── FIX 17: On mobile, use scroll-triggered fade instead of pinned scrub ──
+      // Pinning on mobile (pin: true) causes jitter from URL-bar resize events.
+      // On small screens we use a simple ScrollTrigger with toggleActions instead.
+      const mobile = isTouchDevice() || window.innerWidth < 768;
 
-    return (
-        <Tag ref={containerRef as React.Ref<any>} className={`inline ${className}`} style={{ perspective: "1000px" }}>
-            {words.map((word, wi) => (
-                <span key={wi} className="inline-block mr-[0.25em] overflow-hidden" style={{ perspective: "600px" }}>
-                    {word.split("").map((char, ci) => (
-                        <span
-                            key={ci}
-                            className="ct-char inline-block will-change-transform"
-                            style={{
-                                transformOrigin: "bottom center",
-                                opacity: 0,
-                            }}
-                        >
-                            {char}
-                        </span>
-                    ))}
-                </span>
-            ))}
-        </Tag>
-    );
-}
-
-/* ─────────────────────────────────────────────
-   LineWipe — Horizontal clipPath wipe reveal
-   ───────────────────────────────────────────── */
-
-interface LineWipeProps {
-    children: React.ReactNode;
-    className?: string;
-    delay?: number;
-    direction?: "left" | "right";
-}
-
-export function LineWipe({
-    children,
-    className = "",
-    delay = 0,
-    direction = "left",
-}: LineWipeProps) {
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-
-        const fromClip =
-            direction === "left"
-                ? "inset(0 100% 0 0)"
-                : "inset(0 0 0 100%)";
-
-        const tl = gsap.timeline({
+      if (mobile) {
+        // Simple: reveal all words together when section enters viewport
+        gsap.fromTo(
+          words,
+          { opacity: 0, y: 20 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.6,
+            stagger: 0.04,
+            ease: "power2.out",
             scrollTrigger: {
-                trigger: el,
-                start: "top 85%",
-                toggleActions: "play none none reverse",
+              trigger: section,
+              start: "top 80%",
+              toggleActions: "play none none none",
             },
-            delay,
-        });
-
-        tl.fromTo(
-            el,
-            { clipPath: fromClip, opacity: 0 },
-            {
-                clipPath: "inset(0 0% 0 0)",
-                opacity: 1,
-                duration: 1.2,
-                ease: "power4.inOut",
-            }
+          }
         );
-
-        return () => {
-            tl.kill();
-        };
-    }, [delay, direction]);
-
-    return (
-        <div ref={ref} className={className} style={{ clipPath: "inset(0 100% 0 0)", opacity: 0 }}>
-            {children}
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────
-   StaggerReveal — Orchestrates child reveals
-   via GSAP ScrollTrigger with custom stagger
-   ───────────────────────────────────────────── */
-
-interface StaggerRevealProps {
-    children: React.ReactNode;
-    className?: string;
-    stagger?: number;
-    delay?: number;
-    y?: number;
-    rotateX?: number;
-    selector?: string;
-}
-
-export function StaggerReveal({
-    children,
-    className = "",
-    stagger = 0.1,
-    delay = 0,
-    y = 60,
-    rotateX = 10,
-    selector = ".sr-item",
-}: StaggerRevealProps) {
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-
-        const items = el.querySelectorAll(selector);
-        if (!items.length) return;
-
-        const tl = gsap.timeline({
-            scrollTrigger: {
-                trigger: el,
-                start: "top 80%",
-                toggleActions: "play none none reverse",
-            },
-            delay,
-        });
-
-        tl.fromTo(
-            items,
+        // Show progress bar immediately
+        if (progressRef.current) progressRef.current.style.width = "100%";
+        if (progressLblRef.current) progressLblRef.current.textContent = "100%";
+        if (afterRef.current) {
+          gsap.fromTo(
+            afterRef.current,
+            { opacity: 0, y: 20 },
             {
-                y,
-                rotateX,
-                opacity: 0,
-                scale: 0.96,
-            },
-            {
-                y: 0,
-                rotateX: 0,
-                opacity: 1,
-                scale: 1,
-                duration: 1,
-                stagger,
-                ease: "power4.out",
+              opacity: 1, y: 0, duration: 0.5,
+              scrollTrigger: { trigger: afterRef.current, start: "top 85%", toggleActions: "play none none none" },
             }
-        );
-
-        return () => {
-            tl.kill();
-        };
-    }, [stagger, delay, y, rotateX, selector]);
-
-    return (
-        <div ref={ref} className={className} style={{ perspective: "1000px" }}>
-            {children}
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────
-   BlurReveal — Soft opacity + blur → sharp
-   ───────────────────────────────────────────── */
-
-interface BlurRevealProps {
-    children: React.ReactNode;
-    className?: string;
-    delay?: number;
-}
-
-export function BlurReveal({
-    children,
-    className = "",
-    delay = 0,
-}: BlurRevealProps) {
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-
-        const tl = gsap.timeline({
-            scrollTrigger: {
-                trigger: el,
-                start: "top 85%",
-                toggleActions: "play none none reverse",
-            },
-            delay,
-        });
-
-        tl.fromTo(
-            el,
-            { opacity: 0, filter: "blur(12px)", y: 20 },
-            {
-                opacity: 1,
-                filter: "blur(0px)",
-                y: 0,
-                duration: 1.2,
-                ease: "power3.out",
-            }
-        );
-
-        return () => {
-            tl.kill();
-        };
-    }, [delay]);
-
-    return (
-        <div ref={ref} className={className} style={{ opacity: 0, filter: "blur(12px)" }}>
-            {children}
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────
-   DrawLine — Animated line that draws itself
-   ───────────────────────────────────────────── */
-
-interface DrawLineProps {
-    className?: string;
-    delay?: number;
-    direction?: "left" | "center";
-}
-
-export function DrawLine({
-    className = "",
-    delay = 0,
-    direction = "left",
-}: DrawLineProps) {
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-
-        const tl = gsap.timeline({
-            scrollTrigger: {
-                trigger: el,
-                start: "top 90%",
-                toggleActions: "play none none reverse",
-            },
-            delay,
-        });
-
-        tl.fromTo(
-            el,
-            { scaleX: 0 },
-            {
-                scaleX: 1,
-                duration: 1.5,
-                ease: "power4.inOut",
-            }
-        );
-
-        return () => {
-            tl.kill();
-        };
-    }, [delay, direction]);
-
-    return (
-        <div
-            ref={ref}
-            className={className}
-            style={{
-                transformOrigin: direction === "center" ? "center" : "left",
-                transform: "scaleX(0)",
-            }}
-        />
-    );
-}
-
-/* ─────────────────────────────────────────────
-   CounterReveal — Animated number tick-up
-   ───────────────────────────────────────────── */
-
-interface CounterRevealProps {
-    value: string;
-    className?: string;
-    delay?: number;
-}
-
-export function CounterReveal({ value, className = "", delay = 0 }: CounterRevealProps) {
-    const ref = useRef<HTMLSpanElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const el = ref.current;
-        const container = containerRef.current;
-        if (!el || !container) return;
-
-        // Extract numeric part
-        const numMatch = value.match(/(\d+)/);
-        const suffix = value.replace(/\d+/, "");
-
-        if (!numMatch) {
-            // No number, just reveal
-            const tl = gsap.timeline({
-                scrollTrigger: {
-                    trigger: container,
-                    start: "top 85%",
-                    toggleActions: "play none none reverse",
-                },
-                delay,
-            });
-            tl.fromTo(
-                container,
-                { y: "100%", opacity: 0 },
-                { y: "0%", opacity: 1, duration: 1, ease: "power4.out" }
-            );
-            return () => { tl.kill(); };
+          );
         }
+        return;
+      }
 
-        const target = parseInt(numMatch[1]);
+      // ── Desktop: original pinned scrub ──
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: section,
+          start: "top top",
+          end: "+=220%",
+          pin: true,
+          scrub: 1.35,
+          anticipatePin: 1,
+          invalidateOnRefresh: true,
+          onUpdate(self) {
+            const pct = Math.round(self.progress * 100);
+            if (progressRef.current) progressRef.current.style.width = `${pct}%`;
+            if (progressLblRef.current)
+              progressLblRef.current.textContent = String(pct).padStart(2, "0") + "%";
+          },
+        },
+      });
 
-        const tl = gsap.timeline({
-            scrollTrigger: {
-                trigger: container,
-                start: "top 85%",
-                toggleActions: "play none none reverse",
-            },
-            delay,
-        });
-
+      words.forEach((word, i) => {
+        const charLen = word.textContent?.length ?? 6;
+        const dur = 0.28 + (charLen / 22) * 0.18;
         tl.fromTo(
-            container,
-            { y: "100%", opacity: 0 },
-            { y: "0%", opacity: 1, duration: 0.8, ease: "power4.out" }
+          word,
+          { opacity: 0, x: 56, filter: "blur(12px)", scale: 0.97 },
+          {
+            opacity: 1,
+            x: 0,
+            filter: "blur(0px)",
+            scale: 1,
+            duration: dur,
+            ease: "power3.out",
+          },
+          i * 0.11
         );
+      });
 
-        const counter = { val: 0 };
-        tl.to(
-            counter,
-            {
-                val: target,
-                duration: 1.5,
-                ease: "power2.out",
-                onUpdate: () => {
-                    if (el) el.textContent = Math.round(counter.val) + suffix;
-                },
+      if (afterRef.current) {
+        gsap.fromTo(
+          afterRef.current,
+          { opacity: 0, y: 36 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 1.15,
+            ease: "power3.out",
+            scrollTrigger: {
+              trigger: afterRef.current,
+              start: "top 82%",
+              toggleActions: "play none none reverse",
             },
-            "-=0.4"
+          }
         );
+      }
+    }, rootRef);
 
-        return () => {
-            tl.kill();
-        };
-    }, [value, delay]);
+    return () => ctx.revert();
+  }, []);
 
-    return (
-        <div ref={containerRef} className="overflow-hidden" style={{ opacity: 0 }}>
-            <span ref={ref} className={className}>
-                {value}
-            </span>
+  return (
+    <div ref={rootRef} className="relative z-[1] mt-24 w-full md:mt-32 lg:mt-40">
+      <section
+        ref={sectionRef}
+        id="manifesto"
+        className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-transparent"
+      >
+        <div
+          className="pointer-events-none absolute inset-0 opacity-90"
+          style={{
+            background:
+              "radial-gradient(ellipse 58% 52% at 16% 48%, rgba(255,152,162,0.07) 0%, transparent 58%), radial-gradient(ellipse 42% 55% at 84% 30%, rgba(255,179,189,0.05) 0%, transparent 58%)",
+            animation: "manifestoAmbient 18s ease-in-out infinite alternate",
+          }}
+        />
+
+        <div className="relative z-10 mx-auto w-[90%] max-w-[900px] px-1">
+          <div className="mb-10 flex items-center gap-4 font-mono text-[10px] uppercase tracking-[0.32em] text-mercury/40">
+            <span className="h-px w-8 bg-gradient-to-r from-accent to-transparent" />
+            Manifesto
+          </div>
+
+          <p
+            ref={paragraphRef}
+            className="font-display text-[clamp(1.45rem,3.2vw,2.75rem)] font-light leading-[1.34] tracking-[-0.02em] text-ice"
+          >
+            {PARAGRAPH_WORDS.map(({ text, accent }, i) => (
+              <span
+                key={i}
+                className={`word mr-[0.28em] inline-block will-change-transform ${
+                  accent ? "text-gradient" : ""
+                }`}
+              >
+                {text}
+              </span>
+            ))}
+          </p>
         </div>
-    );
-}
-
-/* ─────────────────────────────────────────────
-   Legacy wrappers — backward-compatible but
-   now powered by GSAP for consistency
-   ───────────────────────────────────────────── */
-
-interface WordRevealProps {
-    text: string;
-    className?: string;
-    delay?: number;
-    once?: boolean;
-}
-
-export function WordReveal({ text, className = "", delay = 0 }: WordRevealProps) {
-    return <CinematicText text={text} className={className} delay={delay} />;
-}
-
-interface LineRevealProps {
-    children: React.ReactNode;
-    className?: string;
-    delay?: number;
-}
-
-export function LineReveal({ children, className = "", delay = 0 }: LineRevealProps) {
-    return <LineWipe delay={delay} className={className}>{children}</LineWipe>;
-}
-
-interface FadeInProps {
-    children: React.ReactNode;
-    className?: string;
-    delay?: number;
-    direction?: "up" | "down" | "left" | "right";
-}
-
-export function FadeIn({ children, className = "", delay = 0 }: FadeInProps) {
-    return <BlurReveal delay={delay} className={className}>{children}</BlurReveal>;
+      </section>
+    </div>
+  );
 }

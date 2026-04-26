@@ -1,15 +1,25 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 
 export function CustomCursor() {
   const dotRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ x: -100, y: -100 });
   const ring = useRef({ x: -100, y: -100 });
+  // FIX 18: Don't render or run the cursor RAF on touch devices.
+  // The cursor hides the native cursor and adds a mousemove listener +
+  // requestAnimationFrame loop on ALL devices — even phones where there's no mouse.
+  // This wastes CPU and forces the browser to stay "hot" on touch.
+  const [isTouch, setIsTouch] = useState(true); // default true = safe SSR
 
   useEffect(() => {
-    // Hide native cursor completely
+    setIsTouch(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
+
+  useEffect(() => {
+    if (isTouch) return; // skip entirely on touch devices
+
     document.documentElement.classList.add("hide-native-cursor");
 
     const move = (e: MouseEvent) => {
@@ -35,7 +45,9 @@ export function CustomCursor() {
       cancelAnimationFrame(rafId);
       document.documentElement.classList.remove("hide-native-cursor");
     };
-  }, []);
+  }, [isTouch]);
+
+  if (isTouch) return null;
 
   return (
     <>

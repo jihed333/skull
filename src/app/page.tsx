@@ -57,7 +57,7 @@ export default function Home() {
                     <PortraitSection />
                 </div>
 
-                <div className="relative z-[40] mt-24 md:mt-32 lg:mt-40">
+                <div className="relative z-[40] mt-12 md:mt-32 lg:mt-40">
                     <AboutSection />
                 </div>
 
@@ -69,13 +69,13 @@ export default function Home() {
                 <div
                     id="projects-wrapper"
                     ref={projectsWrapperRef}
-                    className="relative z-[1] mt-32 md:mt-40 lg:mt-48"
+                    className="relative z-[1] mt-16 md:mt-40 lg:mt-48"
                 >
                     {PROJECTS.map((project, i) => (
                         <ProjectSection key={i} index={i} {...project} />
                     ))}
 
-                    <div className="mt-32 md:mt-40 lg:mt-48">
+                    <div className="mt-16 md:mt-40 lg:mt-48">
                         <ExperienceSection />
                     </div>
 

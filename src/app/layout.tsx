@@ -39,12 +39,12 @@ export default function RootLayout({
     return (
         <html lang="en" className="dark">
             <body
-                className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased bg-void text-mercury`}
+                className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased text-mercury`}
             >
                 <SmoothScrollProvider>
-                    <GlobalBackground />
                     <CustomCursor />
                     <AwwwardsHUD />
+                    <GlobalBackground />
                     <div className="noise-overlay" aria-hidden="true" />
                     {children}
                 </SmoothScrollProvider>

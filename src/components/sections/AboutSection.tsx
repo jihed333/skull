@@ -176,10 +176,10 @@ export function AboutSection() {
       className="relative w-full bg-transparent py-16 md:py-32 overflow-hidden flex items-center"
     >
       <div className="max-w-7xl mx-auto px-4 md:px-6 w-full relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 lg:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8">
 
           {/* LEFT COLUMN */}
-          <div className="lg:col-span-6 space-y-12">
+          <div className="lg:col-span-6 space-y-8 md:space-y-12">
             {/* Label — horizontal slide */}
             <div ref={labelRef} className="flex items-center gap-4" style={{ opacity: 0 }}>
               <span className="font-mono text-xs tracking-[0.4em] text-accent font-bold">01/</span>

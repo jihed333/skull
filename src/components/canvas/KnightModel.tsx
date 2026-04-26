@@ -67,10 +67,10 @@ export function KnightModel({ visible }: KnightModelProps) {
 
     // 🎨 Cinematic Metal Material (MATCH THINKER)
     const mat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color("#cfcfcf"),
+      color: new THREE.Color("#dfdfdf"),
       metalness: 1.0,
       roughness: 0.1,
-      envMapIntensity: 0.2,
+      envMapIntensity: 2.0,
 
       clearcoat: 0.25,
       clearcoatRoughness: 0.18,
@@ -101,7 +101,7 @@ export function KnightModel({ visible }: KnightModelProps) {
     // soft neutral background
     envScene.background = new THREE.Color(0x1a1a1a);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.85);
     envScene.add(ambient);
 
     const key = new THREE.DirectionalLight(0xffffff, 2);
@@ -171,7 +171,7 @@ export function KnightModel({ visible }: KnightModelProps) {
       {/* Key Light */}
       <spotLight
         position={[4, 6, 3]}
-        intensity={1.8}
+        intensity={3.2}
         angle={0.4}
         penumbra={0.6}
         color="#ffffff"
@@ -180,14 +180,14 @@ export function KnightModel({ visible }: KnightModelProps) {
       {/* Fill Light */}
       <pointLight
         position={[-4, -2, -2]}
-        intensity={0.8}
+        intensity={2.0}
         color="#ffd1c7"
       />
 
       {/* Rim Light (IMPORTANT) */}
       <pointLight
         position={[2, -3, -4]}
-        intensity={1.2}
+        intensity={2.8}
         color="#ff98a2"
       />
     </group>

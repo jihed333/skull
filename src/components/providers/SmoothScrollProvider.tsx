@@ -23,6 +23,12 @@ const ScrollContext = createContext<ScrollContextValue>({
 
 export const useScrollContext = () => useContext(ScrollContext);
 
+/** True when the device has a coarse pointer (touch). */
+function isTouchDevice(): boolean {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(pointer: coarse)").matches;
+}
+
 export function SmoothScrollProvider({
     children,
 }: {
@@ -45,48 +51,73 @@ export function SmoothScrollProvider({
 
         const init = async () => {
             try {
-                // Dynamic imports to avoid SSR issues
-                const [lenisModule, gsapImport, stImport] = await Promise.all([
-                    import("lenis"),
+                const [gsapImport, stImport] = await Promise.all([
                     import("gsap"),
                     import("gsap/ScrollTrigger"),
                 ]);
 
-                const Lenis = lenisModule.default;
                 gsapModule = gsapImport.gsap;
                 ScrollTriggerModule = stImport.ScrollTrigger;
 
                 gsapModule.registerPlugin(ScrollTriggerModule);
 
-                lenis = new Lenis({
-                    lerp: 0.05,
-                    smoothWheel: true,
-                    wheelMultiplier: 0.6,
+                // ── FIX 1: Tell ScrollTrigger to ignore mobile resize events ──
+                // This prevents the URL-bar show/hide from causing jitter.
+                ScrollTriggerModule.config({
+                    ignoreMobileResize: true,
+                    limitCallbacks: true,
                 });
 
-                lenisRef.current = lenis;
+                // ── FIX 2: Only init Lenis on non-touch devices ──
+                // Mobile browsers (Chrome/Safari) have hardware-accelerated native
+                // scroll that is smoother than JS scroll on touch. Lenis on mobile
+                // causes jitter because it fights the URL bar resize events.
+                if (!isTouchDevice()) {
+                    const lenisModule = await import("lenis");
+                    const Lenis = lenisModule.default;
 
-                lenis.on("scroll", (e: any) => {
-                    onScroll(e);
-                    ScrollTriggerModule.update();
-                });
+                    lenis = new Lenis({
+                        lerp: 0.05,
+                        smoothWheel: true,
+                        wheelMultiplier: 0.6,
+                    });
 
-                // Sync GSAP ticker with Lenis
-                const rafCallback = (time: number) => {
-                    lenis.raf(time * 1000);
-                };
-                rafCallbackRef.current = rafCallback;
-                gsapModule.ticker.add(rafCallback);
-                gsapModule.ticker.lagSmoothing(0);
+                    lenisRef.current = lenis;
 
-                // Update ScrollTrigger on resize
+                    lenis.on("scroll", (e: any) => {
+                        onScroll(e);
+                        ScrollTriggerModule.update();
+                    });
+
+                    const rafCallback = (time: number) => {
+                        lenis.raf(time * 1000);
+                    };
+                    rafCallbackRef.current = rafCallback;
+                    gsapModule.ticker.add(rafCallback);
+                    gsapModule.ticker.lagSmoothing(0);
+                } else {
+                    // On touch: still track scroll for context consumers
+                    const handleTouchScroll = () => {
+                        const progress = window.scrollY / (document.body.scrollHeight - window.innerHeight || 1);
+                        onScroll({ scroll: window.scrollY, limit: document.body.scrollHeight - window.innerHeight, progress });
+                        ScrollTriggerModule.update();
+                    };
+                    window.addEventListener("scroll", handleTouchScroll, { passive: true });
+                    (lenis as any) = { _touchScrollHandler: handleTouchScroll };
+                }
+
+                // ── FIX 3: Debounced resize — don't thrash ScrollTrigger on every px ──
+                let resizeTimer: ReturnType<typeof setTimeout>;
                 const handleResize = () => {
-                    ScrollTriggerModule.refresh();
+                    clearTimeout(resizeTimer);
+                    resizeTimer = setTimeout(() => {
+                        ScrollTriggerModule.refresh(true);
+                    }, 200);
                 };
                 window.addEventListener("resize", handleResize);
-
-                // Store cleanup reference
                 (lenis as any)._resizeHandler = handleResize;
+                (lenis as any)._resizeTimer = resizeTimer!;
+
             } catch (err) {
                 console.error("SmoothScrollProvider init error:", err);
             }
@@ -98,7 +129,9 @@ export function SmoothScrollProvider({
             if (lenis) {
                 const handleResize = (lenis as any)._resizeHandler;
                 if (handleResize) window.removeEventListener("resize", handleResize);
-                lenis.destroy();
+                const touchHandler = (lenis as any)._touchScrollHandler;
+                if (touchHandler) window.removeEventListener("scroll", touchHandler);
+                if (typeof lenis.destroy === "function") lenis.destroy();
             }
             if (gsapModule && rafCallbackRef.current) {
                 gsapModule.ticker.remove(rafCallbackRef.current);

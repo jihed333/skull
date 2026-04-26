@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -15,6 +15,15 @@ export function TechStackSection() {
     const titleRef = useRef<HTMLHeadingElement>(null);
     const labelRef = useRef<HTMLDivElement>(null);
     const gridRef = useRef<HTMLDivElement>(null);
+    const [isMobile, setIsMobile] = useState(false);
+
+    // Track viewport for conditional rendering
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth < 768);
+        check();
+        window.addEventListener("resize", check);
+        return () => window.removeEventListener("resize", check);
+    }, []);
 
     useEffect(() => {
         const ctx = gsap.context(() => {
@@ -63,45 +72,73 @@ export function TechStackSection() {
                 });
             }
 
-            // Cards diagonal wave
+            // Cards — use matchMedia for desktop vs mobile animations
             if (gridRef.current) {
-                const cards = gridRef.current.querySelectorAll(".tech-card");
-                const sorted = Array.from(cards).map((card, i) => {
-                    const cols = window.innerWidth >= 1024 ? 4 : window.innerWidth >= 640 ? 2 : 1;
-                    const row = Math.floor(i / cols);
-                    const col = i % cols;
-                    return { el: card, diag: row + col };
-                });
-                sorted.sort((a, b) => a.diag - b.diag);
+                const mm = gsap.matchMedia();
 
-                sorted.forEach((item, i) => {
-                    gsap.fromTo(
-                        item.el,
-                        {
-                            y: 50,
-                            x: -30,
-                            rotateY: -12,
-                            rotateX: 8,
-                            opacity: 0,
-                            scale: 0.92,
-                        },
-                        {
-                            y: 0,
-                            x: 0,
-                            rotateY: 0,
-                            rotateX: 0,
-                            opacity: 1,
-                            scale: 1,
-                            duration: 1,
-                            delay: i * 0.1,
-                            ease: "power4.out",
-                            scrollTrigger: {
-                                trigger: gridRef.current,
-                                start: "top 78%",
-                                toggleActions: "play none none reverse",
+                // Desktop: full 3D diagonal wave
+                mm.add("(min-width: 768px)", () => {
+                    const cards = gridRef.current!.querySelectorAll(".tech-card");
+                    const sorted = Array.from(cards).map((card, i) => {
+                        const cols = window.innerWidth >= 1024 ? 4 : 2;
+                        const row = Math.floor(i / cols);
+                        const col = i % cols;
+                        return { el: card, diag: row + col };
+                    });
+                    sorted.sort((a, b) => a.diag - b.diag);
+
+                    sorted.forEach((item, i) => {
+                        gsap.fromTo(
+                            item.el,
+                            {
+                                y: 50,
+                                x: -30,
+                                rotateY: -12,
+                                rotateX: 8,
+                                opacity: 0,
+                                scale: 0.92,
                             },
-                        }
-                    );
+                            {
+                                y: 0,
+                                x: 0,
+                                rotateY: 0,
+                                rotateX: 0,
+                                opacity: 1,
+                                scale: 1,
+                                duration: 1,
+                                delay: i * 0.1,
+                                ease: "power4.out",
+                                scrollTrigger: {
+                                    trigger: gridRef.current,
+                                    start: "top 78%",
+                                    toggleActions: "play none none reverse",
+                                },
+                            }
+                        );
+                    });
+                });
+
+                // Mobile: simple fade-up, no 3D rotation (prevents clipping)
+                mm.add("(max-width: 767px)", () => {
+                    const cards = gridRef.current!.querySelectorAll(".tech-card");
+                    cards.forEach((card, i) => {
+                        gsap.fromTo(
+                            card,
+                            { y: 30, opacity: 0 },
+                            {
+                                y: 0,
+                                opacity: 1,
+                                duration: 0.7,
+                                delay: i * 0.06,
+                                ease: "power3.out",
+                                scrollTrigger: {
+                                    trigger: gridRef.current,
+                                    start: "top 85%",
+                                    toggleActions: "play none none reverse",
+                                },
+                            }
+                        );
+                    });
                 });
             }
         }, sectionRef);
@@ -122,20 +159,23 @@ export function TechStackSection() {
             ref={sectionRef}
             id="tech-stack"
             className="section-container min-h-0 relative mt-20 pb-0 overflow-hidden curvy-section border-y border-white/10 bg-black"
-            style={{ borderRadius: "50% / 5vw" }}
+            style={{
+                // Flatten the extreme curvature on mobile
+                borderRadius: isMobile ? "24px" : "50% / 5vw",
+            }}
         >
-            {/* Silk Background */}
+            {/* Silk Background — reduced intensity on mobile */}
             <div className="absolute inset-0 z-0 pointer-events-none opacity-50">
                 <Silk
-                    speed={5}
-                    scale={1}
+                    speed={isMobile ? 3 : 5}
+                    scale={isMobile ? 0.8 : 1}
                     color="#ffffff"
-                    noiseIntensity={1.5}
+                    noiseIntensity={isMobile ? 1.0 : 1.5}
                     rotation={0}
                 />
             </div>
 
-            <div className="max-w-6xl mx-auto relative z-10 py-10">
+            <div className="max-w-6xl mx-auto relative z-10 py-10 px-1 sm:px-0">
                 {/* Label — airport board flip */}
                 <div className="mb-4" style={{ perspective: "600px" }}>
                     <div ref={labelRef} className="font-mono text-xs tracking-[0.4em] uppercase text-contrast/70">
@@ -150,8 +190,8 @@ export function TechStackSection() {
                 {/* Title — slot machine reel */}
                 <h2
                     ref={titleRef}
-                    className="font-display text-display-lg font-bold mb-16"
-                    style={{ perspective: "800px" }}
+                    className="font-display text-display-lg font-bold mb-8 md:mb-16"
+                    style={{ perspective: isMobile ? "400px" : "800px" }}
                 >
                     {titleWords.map((line, i) => (
                         <React.Fragment key={i}>
@@ -165,12 +205,12 @@ export function TechStackSection() {
                     ))}
                 </h2>
 
-                {/* Grid — diagonal wave */}
+                {/* Grid — diagonal wave (desktop) / fade-up (mobile) */}
                 <div
                     ref={gridRef}
                     role="list"
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-                    style={{ perspective: "1200px" }}
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+                    style={{ perspective: isMobile ? "none" : "1200px" }}
                 >
                     {TECH_STACK.map((tech) => (
                         <div
@@ -184,7 +224,7 @@ export function TechStackSection() {
                                     <span className="font-mono text-[10px] tracking-[0.3em] uppercase text-contrast/50">
                                         {tech.category}
                                     </span>
-                                    <h3 className="font-display text-xl font-semibold text-secondary group-hover:text-white transition-colors">
+                                    <h3 className="font-display text-lg sm:text-xl font-semibold text-secondary group-hover:text-white transition-colors">
                                         {tech.name}
                                     </h3>
                                     <p className="text-sm text-grey/40">{tech.description}</p>
