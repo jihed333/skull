@@ -9,27 +9,7 @@ import styles from "./PortraitSection.module.css";
 
 gsap.registerPlugin(ScrollTrigger);
 
-function isTouchDevice(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(pointer: coarse)").matches;
-}
 
-function GrainOverlay() {
-  return (
-    <svg
-      className="pointer-events-none fixed inset-0 z-[999] opacity-[0.035] mix-blend-overlay"
-      width="100%"
-      height="100%"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <filter id="grain">
-        <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
-        <feColorMatrix type="saturate" values="0" />
-      </filter>
-      <rect width="100%" height="100%" filter="url(#grain)" />
-    </svg>
-  );
-}
 
 function MarqueeLine({ text, speed = 40, reverse = false }: { text: string; speed?: number; reverse?: boolean }) {
   const items = Array(12).fill(text);
@@ -196,10 +176,7 @@ export function PortraitSection() {
       rafId = requestAnimationFrame(tick);
     };
 
-    // ── FIX 8: On mobile, reduce RAF work — pause when not scrolling ──
-    if (!isTouchDevice()) {
-      rafId = requestAnimationFrame(tick);
-    }
+    rafId = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -208,7 +185,6 @@ export function PortraitSection() {
 
   return (
     <>
-      <GrainOverlay />
 
       <section
         ref={sectionRef}

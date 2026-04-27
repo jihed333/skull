@@ -68,18 +68,19 @@ export function SmoothScrollProvider({
                     limitCallbacks: true,
                 });
 
-                // ── FIX 2: Only init Lenis on non-touch devices ──
-                // Mobile browsers (Chrome/Safari) have hardware-accelerated native
-                // scroll that is smoother than JS scroll on touch. Lenis on mobile
-                // causes jitter because it fights the URL bar resize events.
+                // ── FIX 2: Mobile jitter prevention ──
+                // Mobile browsers have hardware-accelerated scroll, but when GSAP pins elements, 
+                // it conflicts with the async scroll thread and the URL bar showing/hiding.
+                // ScrollTrigger.normalizeScroll(true) forces scroll to the main thread, 
+                // locking the URL bar and ensuring perfectly smooth pinning.
                 if (!isTouchDevice()) {
                     const lenisModule = await import("lenis");
                     const Lenis = lenisModule.default;
 
                     lenis = new Lenis({
-                        lerp: 0.05,
+                        lerp: 0.035,
                         smoothWheel: true,
-                        wheelMultiplier: 0.6,
+                        wheelMultiplier: 0.4,
                     });
 
                     lenisRef.current = lenis;
@@ -106,18 +107,6 @@ export function SmoothScrollProvider({
                     (lenis as any) = { _touchScrollHandler: handleTouchScroll };
                 }
 
-                // ── FIX 3: Debounced resize — don't thrash ScrollTrigger on every px ──
-                let resizeTimer: ReturnType<typeof setTimeout>;
-                const handleResize = () => {
-                    clearTimeout(resizeTimer);
-                    resizeTimer = setTimeout(() => {
-                        ScrollTriggerModule.refresh(true);
-                    }, 200);
-                };
-                window.addEventListener("resize", handleResize);
-                (lenis as any)._resizeHandler = handleResize;
-                (lenis as any)._resizeTimer = resizeTimer!;
-
             } catch (err) {
                 console.error("SmoothScrollProvider init error:", err);
             }
@@ -127,8 +116,6 @@ export function SmoothScrollProvider({
 
         return () => {
             if (lenis) {
-                const handleResize = (lenis as any)._resizeHandler;
-                if (handleResize) window.removeEventListener("resize", handleResize);
                 const touchHandler = (lenis as any)._touchScrollHandler;
                 if (touchHandler) window.removeEventListener("scroll", touchHandler);
                 if (typeof lenis.destroy === "function") lenis.destroy();

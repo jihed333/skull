@@ -11,16 +11,10 @@ const HALF_FOV_RAD = (CAMERA.fov / 2) * (Math.PI / 180);
 
 // ─── Responsive skull config ─────────────────────────────────────────────────
 function getSkullConfig() {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-
   return {
-    offset: isMobile
-      ? ([0.10, 0.45, -1.75] as [number, number, number])
-      : ([0.18, 0.55, -1.75] as [number, number, number]),
-    rotation: isMobile
-      ? ([0.70, 0.30, -0.30] as [number, number, number])
-      : ([0.70, 0.43, -0.42] as [number, number, number]),
-    scale: isMobile ? 0.85 : 1.08,
+    offset: [0.18, 0.55, -1.75] as [number, number, number],
+    rotation: [0.70, 0.43, -0.42] as [number, number, number],
+    scale: 1.08,
   };
 }
 
@@ -44,12 +38,10 @@ const LIGHTS = [
 
 // ─── Responsive travel config ────────────────────────────────────────────────
 function getTravelConfig() {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-
   return {
     targetScreenX: 0.5,
-    targetScreenY: isMobile ? 0.40 : 0.35,
-    scaleRatio: isMobile ? 0.6 : 0.8,
+    targetScreenY: 0.35,
+    scaleRatio: 0.8,
     yawDelta: -0.45,
     pitchDelta: -0.05,
   };
@@ -182,9 +174,8 @@ function SkullMesh() {
       s.rotY = stareRot[1];
       s.rotZ = stareRot[2];
 
-      // ── Scale pop — reduced on mobile to prevent overflow ───────────────
-      const isMobile = window.innerWidth < 768;
-      const maxPopScale = isMobile ? 1.8 : 2.8;
+      // ── Scale pop ───────────────
+      const maxPopScale = 2.8;
 
       const pPop    = THREE.MathUtils.clamp(p / 0.3, 0, 1);
       const pTravel = THREE.MathUtils.clamp(p / 1.0, 0, 1);
@@ -194,7 +185,7 @@ function SkullMesh() {
       s.scale = currentScale;
 
       // ── Z: punch forward, snap back ────────────────────────────────────
-      const zPunch = isMobile ? 0.6 : 1.2;
+      const zPunch = 1.2;
       let currentZ = THREE.MathUtils.lerp(SKULL.offset[2], zPunch, easeRotate(pPop));
       currentZ     = THREE.MathUtils.lerp(currentZ, SKULL.offset[2], easeTravel(pTravel));
       s.posZ = currentZ;
