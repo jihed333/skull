@@ -77,10 +77,9 @@ export function WordRevealSection() {
         scrollTrigger: {
           trigger: section,
           start: "top top",
-          end: "+=220%",
-          pin: true,
+          end: "bottom bottom",
+          pin: false,
           scrub: 1.35,
-          anticipatePin: 1,
           invalidateOnRefresh: true,
           onUpdate(self) {
             const pct = Math.round(self.progress * 100);
@@ -136,8 +135,10 @@ export function WordRevealSection() {
       <section
         ref={sectionRef}
         id="manifesto"
-        className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-transparent"
+        className="relative w-full bg-transparent"
+        style={{ height: "320dvh" }}
       >
+        <div className="sticky top-0 flex min-h-[100dvh] items-center justify-center overflow-hidden w-full">
         <div
           className="pointer-events-none absolute inset-0 opacity-90"
           style={{
@@ -168,6 +169,7 @@ export function WordRevealSection() {
               </span>
             ))}
           </p>
+        </div>
         </div>
       </section>
 
