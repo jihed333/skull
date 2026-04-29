@@ -97,38 +97,56 @@ function SkullMesh() {
     isDetached: false,
   });
 
+  // FIX: Cache rects — getBoundingClientRect inside useFrame forced a full
+  // layout recalculation 60x/sec, which was the #1 cause of skull jitter.
+  // Now only updated on scroll (passive) and resize (ResizeObserver).
+  const frameRectRef = useRef<DOMRect | null>(null);
+  const scanlineTopRef = useRef<number>(0);
+
+  useEffect(() => {
+    const updateRects = () => {
+      const frame = document.querySelector("[data-portrait-frame]");
+      const scanline = document.querySelector("[data-portrait-scanline]");
+      if (frame) frameRectRef.current = frame.getBoundingClientRect();
+      if (scanline) scanlineTopRef.current = scanline.getBoundingClientRect().top;
+    };
+    window.addEventListener("scroll", updateRects, { passive: true });
+    const ro = new ResizeObserver(updateRects);
+    const frame = document.querySelector("[data-portrait-frame]");
+    if (frame) ro.observe(frame);
+    updateRects();
+    return () => {
+      window.removeEventListener("scroll", updateRects);
+      ro.disconnect();
+    };
+  }, []);
+
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
-    // Recalculate responsive config every frame (cheap)
     const SKULL = getSkullConfig();
     const TRAVEL = getTravelConfig();
 
-    const frame = document.querySelector("[data-portrait-frame]");
-    const scanline = document.querySelector("[data-portrait-scanline]");
-    const aboutSection = document.querySelector("#about");
-    if (!frame || !aboutSection) return;
+    const frameRect = frameRectRef.current;
+    if (!frameRect) return;
 
-    const frameRect = frame.getBoundingClientRect();
     const s = state.current;
+    const slTop = scanlineTopRef.current;
 
-    // ── Scanline completion check ──────────────────────────────────────────
+    // ── Scanline completion check (using cached rects) ─────────────────────
     let scanlineComplete = s.isDetached;
     let scanlineEndProgress = 0;
 
-    if (scanline) {
-      const slRect = scanline.getBoundingClientRect();
-      const distToBottom = frameRect.bottom - slRect.top;
-      const triggerZone = frameRect.height * 0.15;
-      scanlineEndProgress = THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1);
+    const distToBottom = frameRect.bottom - slTop;
+    const triggerZone = frameRect.height * 0.15;
+    scanlineEndProgress = THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1);
 
-      if (!s.isDetached && slRect.top >= frameRect.bottom - 2) {
-        scanlineComplete = true;
-      }
-      if (s.isDetached && slRect.top < frameRect.bottom - 20) {
-        scanlineComplete = false;
-      }
+    if (!s.isDetached && slTop >= frameRect.bottom - 2) {
+      scanlineComplete = true;
+    }
+    if (s.isDetached && slTop < frameRect.bottom - 20) {
+      scanlineComplete = false;
     }
 
     // ── Live anchor in frame ───────────────────────────────────────────────
@@ -180,14 +198,22 @@ function SkullMesh() {
       const pPop    = THREE.MathUtils.clamp(p / 0.3, 0, 1);
       const pTravel = THREE.MathUtils.clamp(p / 1.0, 0, 1);
 
-      let currentScale = THREE.MathUtils.lerp(SKULL.scale, maxPopScale, easeRotate(pPop));
-      currentScale     = THREE.MathUtils.lerp(currentScale, TRAVEL.scaleRatio, easeTravel(pTravel));
-      s.scale = currentScale;
-
-      // ── Z: punch forward, snap back ────────────────────────────────────
+      let currentScale = SKULL.scale;
+      let currentZ = SKULL.offset[2];
       const zPunch = 1.2;
-      let currentZ = THREE.MathUtils.lerp(SKULL.offset[2], zPunch, easeRotate(pPop));
-      currentZ     = THREE.MathUtils.lerp(currentZ, SKULL.offset[2], easeTravel(pTravel));
+
+      if (p < 0.3) {
+        // Phase 1: Pop up and punch forward
+        currentScale = THREE.MathUtils.lerp(SKULL.scale, maxPopScale, easeRotate(pPop));
+        currentZ = THREE.MathUtils.lerp(SKULL.offset[2], zPunch, easeRotate(pPop));
+      } else {
+        // Phase 2: Scale down and return Z while traveling down
+        const pTravelScale = THREE.MathUtils.clamp((p - 0.3) / 0.7, 0, 1);
+        currentScale = THREE.MathUtils.lerp(maxPopScale, TRAVEL.scaleRatio, easeTravel(pTravelScale));
+        currentZ = THREE.MathUtils.lerp(zPunch, SKULL.offset[2], easeTravel(pTravelScale));
+      }
+
+      s.scale = currentScale;
       s.posZ = currentZ;
 
       // ── XY: travel to below viewport ────────────────────────────────────

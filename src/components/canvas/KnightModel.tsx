@@ -131,13 +131,16 @@ export function KnightModel({ visible }: KnightModelProps) {
     if (!groupRef.current) return;
 
     const g = groupRef.current;
+    const p = progressRef.current;
 
-    if (progressRef.current <= 0 || progressRef.current >= 1) {
-      g.position.y = 20;
+    // FIX: Use visibility instead of teleporting to y=20.
+    // Setting y=20 every frame when inactive caused a one-frame flash
+    // because the lerp would start from 20 on re-entry.
+    if (p <= 0 || p >= 1) {
+      g.visible = false;
       return;
     }
-
-    const p = progressRef.current;
+    g.visible = true;
 
     // Vertical cinematic travel
     const targetY = 8 - p * 16;
@@ -154,9 +157,9 @@ export function KnightModel({ visible }: KnightModelProps) {
     g.rotation.x += (targetRotX - g.rotation.x) * 0.05;
     g.rotation.y += (targetRotY - g.rotation.y) * 0.05;
 
-    // Subtle breathing motion
-    floatRef.current += delta;
-    g.position.y += Math.sin(floatRef.current * 1.5) * 0.003;
+    // FIX: Removed the per-frame breathing offset (Math.sin added to y each frame).
+    // It conflicted with the lerp above — both writing g.position.y each frame
+    // caused the scale to appear to "jump" as the position oscillated.
   });
 
   // ─────────────────────────────────────────────

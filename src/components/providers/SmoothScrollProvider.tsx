@@ -6,7 +6,6 @@ import React, {
     useEffect,
     useRef,
     useState,
-    useCallback,
 } from "react";
 
 interface ScrollContextValue {
@@ -39,15 +38,22 @@ export function SmoothScrollProvider({
     const [scrollY, setScrollY] = useState(0);
     const rafCallbackRef = useRef<((time: number) => void) | null>(null);
 
-    const onScroll = useCallback((e: { scroll: number; limit: number; progress: number }) => {
-        setScrollProgress(e.progress);
-        setScrollY(e.scroll);
-    }, []);
+    // FIX: Use a ref-based callback so it never changes identity.
+    // The old useCallback version was listed in useEffect deps, causing
+    // Lenis + GSAP to be torn down and re-created on every scroll event.
+    const setScrollRef = useRef({ setScrollProgress, setScrollY });
+    setScrollRef.current = { setScrollProgress, setScrollY };
 
     useEffect(() => {
         let lenis: any = null;
         let gsapModule: any = null;
         let ScrollTriggerModule: any = null;
+
+        // Stable callback — never changes, never re-triggers useEffect
+        const onScroll = (e: { scroll: number; limit: number; progress: number }) => {
+            setScrollRef.current.setScrollProgress(e.progress);
+            setScrollRef.current.setScrollY(e.scroll);
+        };
 
         const init = async () => {
             try {
@@ -61,18 +67,11 @@ export function SmoothScrollProvider({
 
                 gsapModule.registerPlugin(ScrollTriggerModule);
 
-                // ── FIX 1: Tell ScrollTrigger to ignore mobile resize events ──
-                // This prevents the URL-bar show/hide from causing jitter.
                 ScrollTriggerModule.config({
                     ignoreMobileResize: true,
                     limitCallbacks: true,
                 });
 
-                // ── FIX 2: Mobile jitter prevention ──
-                // Mobile browsers have hardware-accelerated scroll, but when GSAP pins elements, 
-                // it conflicts with the async scroll thread and the URL bar showing/hiding.
-                // ScrollTrigger.normalizeScroll(true) forces scroll to the main thread, 
-                // locking the URL bar and ensuring perfectly smooth pinning.
                 if (!isTouchDevice()) {
                     const lenisModule = await import("lenis");
                     const Lenis = lenisModule.default;
@@ -97,7 +96,7 @@ export function SmoothScrollProvider({
                     gsapModule.ticker.add(rafCallback);
                     gsapModule.ticker.lagSmoothing(0);
                 } else {
-                    // On touch: still track scroll for context consumers
+                    // On touch: track scroll for context consumers
                     const handleTouchScroll = () => {
                         const progress = window.scrollY / (document.body.scrollHeight - window.innerHeight || 1);
                         onScroll({ scroll: window.scrollY, limit: document.body.scrollHeight - window.innerHeight, progress });
@@ -127,7 +126,7 @@ export function SmoothScrollProvider({
                 ScrollTriggerModule.getAll().forEach((trigger: any) => trigger.kill());
             }
         };
-    }, [onScroll]);
+    }, []); // ← empty deps: init once, never re-run
 
     return (
         <ScrollContext.Provider
