@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useScroll } from "framer-motion";
 
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
 
-// --- Static Section Imports ---
 import { AboutSection } from "@/components/sections/AboutSection";
 import { TechStackSection } from "@/components/sections/TechStackSection";
 import { PortraitSection } from "@/components/sections/PortraitSection";
@@ -21,78 +20,105 @@ import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";
 
 export default function Home() {
-    const [isLoading, setIsLoading] = useState(true);
-
-    const handleLoadingComplete = useCallback(() => {
-        setIsLoading(false);
-    }, []);
-
-    const projectsWrapperRef = useRef<HTMLDivElement>(null);
-
-    useScroll({
-        target: projectsWrapperRef,
-        offset: ["start end", "end start"],
-    });
-
-    useSectionTransition();
-
-    return (
-        <>
-            {isLoading && <LoadingScreen onComplete={handleLoadingComplete} />}
-
-            <main
-                className="relative z-10 w-full overflow-x-hidden"
-                style={{
-                    opacity: isLoading ? 0 : 1,
-                    transition: "opacity 0.8s ease",
-                    pointerEvents: isLoading ? "none" : "auto",
-                }}
-            >
-                {/* Global skull canvas — moved inside main so it shares the stacking context */}
-                {!isLoading && <GlobalSkullCanvas />}
-                {!isLoading && <Scene />}
-
-                {/* Portrait shell above skull; jihed img clip-path reveals WebGL skull with scan */}
-                <div className="relative z-[40] mt-0 w-full">
-                    <PortraitSection />
-                </div>
-
-                <div className="relative z-[40] mt-12 md:mt-32 lg:mt-40">
-                    <AboutSection />
-                </div>
-
-                {/* Tech Stack section covers the skull with higher z-index and dark BG */}
-                <div className="relative z-[60] mt-0 bg-[#080808]">
-                    <TechStackSection />
-                </div>
-
-                <div
-                    id="projects-wrapper"
-                    ref={projectsWrapperRef}
-                    className="relative z-[1] mt-16 md:mt-40 lg:mt-48"
-                >
-                    {PROJECTS.map((project, i) => (
-                        <ProjectSection key={i} index={i} {...project} />
-                    ))}
-
-                    <div className="mt-16 md:mt-40 lg:mt-48">
-                        <ExperienceSection />
-                    </div>
-
-                    <div id="philosophy-section" className="mt-12 md:mt-16 lg:mt-24">
-                        <PhilosophySection />
-                    </div>
-                </div>
-
-                {/* Pin + scroll-scrub text — must stay outside #projects-wrapper (see useSectionTransition) */}
-                <WordRevealSection />
-
-                {/* Contact must NOT live inside #projects-wrapper to prevent GSAP layering glitches. */}
-
-                <div className="relative z-[150] mt-0 w-full">
-                    <ContactSection />
-                </div>
-            </main>
-        </>
+  // FIX: Detect mobile once on mount — avoids SSR mismatch (hydration error source).
+  // Never read window during render; only after mount inside useEffect.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    setIsMobile(
+      window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768
     );
+  }, []);
+
+  // ── Dual-gate loading: BOTH gates must open before we dismiss the loader ──
+  // Gate 1: LoadingScreen animation timer (4 s) fires onAnimationDone.
+  // Gate 2: Skull model's first rendered frame fires onSkullReady.
+  // On mobile there is no skull, so gate 2 is pre-opened.
+  const [animationDone, setAnimationDone] = useState(false);
+  const [skullReady, setSkullReady] = useState(false); // pre-opened on mobile below
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Pre-open the skull gate on mobile (no WebGL skull rendered there).
+  useEffect(() => {
+    if (isMobile) setSkullReady(true);
+  }, [isMobile]);
+
+  // When BOTH gates are open, dismiss the loading screen.
+  useEffect(() => {
+    if (animationDone && skullReady) {
+      setIsLoading(false);
+    }
+  }, [animationDone, skullReady]);
+
+  const handleLoadingComplete = useCallback(() => {
+    setAnimationDone(true);
+  }, []);
+
+  const handleSkullReady = useCallback(() => {
+    setSkullReady(true);
+  }, []);
+
+  const projectsWrapperRef = useRef<HTMLDivElement>(null);
+
+  useScroll({
+    target: projectsWrapperRef,
+    offset: ["start end", "end start"],
+  });
+
+  useSectionTransition();
+
+  return (
+    <>
+      {isLoading && <LoadingScreen onComplete={handleLoadingComplete} />}
+
+      <main
+        className="relative z-10 w-full overflow-x-hidden"
+        style={{
+          opacity: isLoading ? 0 : 1,
+          transition: "opacity 0.8s ease",
+          pointerEvents: isLoading ? "none" : "auto",
+        }}
+      >
+        {/* Skull is rendered BEFORE isLoading is false so it can load in the
+            background during the loading screen. onReady fires when it's placed. */}
+        {!isMobile && <GlobalSkullCanvas onReady={handleSkullReady} />}
+        {!isLoading && !isMobile && <Scene />}
+
+        <div className="relative z-[40] mt-0 w-full">
+          <PortraitSection />
+        </div>
+
+        <div className="relative z-[40] mt-12 md:mt-32 lg:mt-40">
+          <AboutSection />
+        </div>
+
+        <div className="relative z-[60] mt-0 bg-[#080808]">
+          <TechStackSection />
+        </div>
+
+        <div
+          id="projects-wrapper"
+          ref={projectsWrapperRef}
+          className="relative z-[1] mt-16 md:mt-40 lg:mt-48"
+        >
+          {PROJECTS.map((project, i) => (
+            <ProjectSection key={i} index={i} {...project} />
+          ))}
+
+          <div className="mt-16 md:mt-40 lg:mt-48">
+            <ExperienceSection />
+          </div>
+
+          <div id="philosophy-section" className="mt-12 md:mt-16 lg:mt-24">
+            <PhilosophySection />
+          </div>
+        </div>
+
+        <WordRevealSection />
+
+        <div className="relative z-[150] mt-0 w-full">
+          <ContactSection />
+        </div>
+      </main>
+    </>
+  );
 }

@@ -9,8 +9,6 @@ import styles from "./PortraitSection.module.css";
 
 gsap.registerPlugin(ScrollTrigger);
 
-
-
 function MarqueeLine({ text, speed = 40, reverse = false }: { text: string; speed?: number; reverse?: boolean }) {
   const items = Array(12).fill(text);
   return (
@@ -54,9 +52,8 @@ export function PortraitSection() {
   const roleRef = useRef<HTMLDivElement>(null);
 
   const scrollProgressRef = useRef(0);
-
   const XRAY_END = 0.8;
-  // ── GSAP animations ──────────────────────────────────────────────────────
+
   useEffect(() => {
     const ctx = gsap.context(() => {
       const entranceTl = gsap.timeline({ delay: 0.3 });
@@ -101,6 +98,8 @@ export function PortraitSection() {
           trigger: sectionRef.current,
           start: "top top",
           end: "+=150%",
+          // FIX: pin works on both desktop and mobile — the section must stay locked.
+          // pinSpacing:true keeps the scroll distance so content below doesn't jump up.
           pin: true,
           scrub: 1,
           pinSpacing: true,
@@ -112,13 +111,17 @@ export function PortraitSection() {
         },
       });
 
-
-      masterTl.to(titleTopRef.current,
-        { xPercent: -8, yPercent: -4, duration: 1, ease: "none" }, 0
-      );
-      masterTl.to(titleBotRef.current,
-        { xPercent: 8, yPercent: 4, duration: 1, ease: "none" }, 0
-      );
+      // FIX: Only animate titles on desktop — on mobile these cause layout reflows
+      // because xPercent/yPercent interact badly with the pinned container size.
+      const isMobile = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768;
+      if (!isMobile) {
+        masterTl.to(titleTopRef.current,
+          { xPercent: -8, yPercent: -4, duration: 1, ease: "none" }, 0
+        );
+        masterTl.to(titleBotRef.current,
+          { xPercent: 8, yPercent: 4, duration: 1, ease: "none" }, 0
+        );
+      }
 
       requestAnimationFrame(() => requestAnimationFrame(() => ScrollTrigger.refresh()));
     }, sectionRef);
@@ -133,19 +136,11 @@ export function PortraitSection() {
     return () => window.removeEventListener("load", refresh);
   }, []);
 
-  // ── FIX 5: Merge the 3 separate RAF loops into ONE ───────────────────────
-  // Previously there were 3 requestAnimationFrame loops running simultaneously:
-  // 1. xray clip-path + scanline sync
-  // 2. fixedSkltn getBoundingClientRect position sync
-  // Each fired every frame independently = 3x the work, layout thrash.
-  //
-  // Now ONE unified RAF loop handles everything, and the skeleton position
-  // sync is throttled with a ResizeObserver instead of getBoundingClientRect
-  // every single frame (which forces layout recalculation = jitter).
+  // FIX: Single RAF loop — reads scrollProgressRef (no DOM read), writes only
+  // clip-path and transform. Uses will-change on the elements so the browser
+  // keeps them on their own compositor layers = no layout reflow = no jitter.
   useEffect(() => {
     let rafId: number;
-
-    // Single RAF loop for xray + scanline only
 
     const tick = () => {
       const p = scrollProgressRef.current;
@@ -160,39 +155,36 @@ export function PortraitSection() {
         const opacity = scanVisible ? "1" : "0";
 
         if (xrayMaskRef.current) {
-          xrayMaskRef.current.style.clipPath = `inset(0% 0% ${clipBottom.toFixed(4)}% 0%)`;
+          xrayMaskRef.current.style.clipPath = `inset(0% 0% ${clipBottom.toFixed(2)}% 0%)`;
         }
         if (scanlineRef.current) {
-          scanlineRef.current.style.transform = `translateY(${scanY}px)`;
+          scanlineRef.current.style.transform = `translateY(${scanY.toFixed(2)}px)`;
           scanlineRef.current.style.opacity = opacity;
         }
         if (scanlineGlowRef.current) {
-          scanlineGlowRef.current.style.transform = `translateY(${scanY - 40}px)`;
+          scanlineGlowRef.current.style.transform = `translateY(${(scanY - 40).toFixed(2)}px)`;
           scanlineGlowRef.current.style.opacity = opacity;
         }
-
       }
 
       rafId = requestAnimationFrame(tick);
     };
 
     rafId = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-    };
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   return (
     <>
-
       <section
         ref={sectionRef}
         data-portrait-section
         className="relative w-full bg-[#080808]"
-        style={{ height: "100dvh" }}
+        // FIX: Use 100svh on mobile (safe viewport height) — 100dvh can shift
+        // on mobile browsers when the address bar shows/hides, causing the
+        // pinned section to resize mid-scroll and jump.
+        style={{ height: "100svh" }}
       >
-        {/* Radial ambient glow */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] rounded-full"
@@ -202,19 +194,17 @@ export function PortraitSection() {
 
         <div ref={wrapRef} className="relative h-full">
 
-          {/* Top marquee */}
           <div className="absolute top-6 left-0 right-0 z-20">
             <MarqueeLine text="JIHED HAGUI — ARCHITECT — DESIGNER — VISIONARY — PORTFOLIO 2026" speed={45} />
           </div>
 
-          {/* Bottom marquee */}
           <div className="absolute bottom-6 left-0 right-0 z-20">
             <MarqueeLine text="AVAILABLE FOR WORK — BASED IN TUNISIA — OPEN TO GLOBAL PROJECTS" speed={38} reverse />
           </div>
 
-          {/* Vertical side label */}
+          {/* Hide vertical label on mobile to avoid overflow jitter */}
           <div
-            className="absolute left-6 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-3"
+            className="absolute left-6 top-1/2 -translate-y-1/2 z-30 hidden md:flex flex-col items-center gap-3"
             style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
           >
             <span className="text-[10px] tracking-[0.3em] text-white/20 uppercase">Portrait</span>
@@ -226,7 +216,16 @@ export function PortraitSection() {
           <div
             ref={titleTopRef}
             className="absolute z-10 pointer-events-auto will-change-transform flex items-center justify-center"
-            style={{ top: "7vh", left: "3vw", lineHeight: 0.82, opacity: 0, width: "clamp(120px, 20vw, 350px)", height: "clamp(50px, 12vw, 180px)" }}
+            style={{
+              top: "7vh",
+              left: "3vw",
+              lineHeight: 0.82,
+              opacity: 0,
+              // FIX: clamp sizes are too large on mobile — portrait takes full width,
+              // titles overflow and cause horizontal scroll = layout jitter.
+              width: "clamp(80px, 18vw, 350px)",
+              height: "clamp(36px, 10vw, 180px)",
+            }}
           >
             <TextHoverEffect text="JIHED" viewBox="0 0 350 160" fontSize={140} fontWeight={900} />
           </div>
@@ -235,7 +234,14 @@ export function PortraitSection() {
           <div
             ref={titleBotRef}
             className="absolute z-10 pointer-events-auto will-change-transform text-right flex items-center justify-end"
-            style={{ bottom: "10vh", right: "3vw", lineHeight: 0.82, opacity: 0, width: "clamp(280px, 45vw, 850px)", height: "clamp(45px, 10.5vw, 160px)" }}
+            style={{
+              bottom: "10vh",
+              right: "3vw",
+              lineHeight: 0.82,
+              opacity: 0,
+              width: "clamp(180px, 38vw, 850px)",
+              height: "clamp(32px, 9vw, 160px)",
+            }}
           >
             <TextHoverEffect text="HAGUI" viewBox="0 0 900 160" fontSize={120} fontWeight={900} fontStyle="italic" textColor="#ff98a2" />
           </div>
@@ -247,7 +253,16 @@ export function PortraitSection() {
             style={{ top: "9vh", right: "4vw", opacity: 0, gap: "0.75rem" }}
           >
             <div style={{ width: "2rem", height: "1px", background: "linear-gradient(to right, transparent, #ff98a2)" }} />
-            <span style={{ fontFamily: "var(--font-jetbrains-mono), monospace", fontSize: "clamp(9px, 1.1vw, 12px)", letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", display: "inline-block" }}>
+            <span style={{
+              fontFamily: "var(--font-jetbrains-mono), monospace",
+              // FIX: clamp floor was 9px — too small on mobile, causes reflow when
+              // font metrics don't fit. Raise floor to 10px.
+              fontSize: "clamp(10px, 1.1vw, 12px)",
+              letterSpacing: "0.35em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.35)",
+              display: "inline-block"
+            }}>
               <RoleSwitcher />
             </span>
           </div>
@@ -256,7 +271,15 @@ export function PortraitSection() {
           <div className="absolute inset-0 flex items-center justify-center">
             <div
               className="relative"
-              style={{ width: "clamp(280px, 42vw, 580px)", height: "clamp(380px, 68vh, 780px)" }}
+              style={{
+                // FIX: width was 42vw which on mobile (375px) = ~157px — too narrow,
+                // causes the frame to be taller than the viewport and break pinning.
+                // Use 85vw on mobile, cap at desktop sizes.
+                width: "clamp(260px, 85vw, 580px)",
+                // FIX: height was 68vh — on mobile safari 100svh != 100dvh.
+                // Use a smaller fraction so frame always fits inside pinned section.
+                height: "clamp(340px, 60svh, 780px)",
+              }}
             >
               <div
                 ref={frameRef}
@@ -278,7 +301,7 @@ export function PortraitSection() {
                     ref={baseImgRef}
                     src="/jihed.webp"
                     alt="Portrait"
-                    className="absolute inset-0 w-full h-full object-cover left-[-5px]"
+                    className="absolute inset-0 w-full h-full object-cover"
                     style={{ zIndex: 1 }}
                     onLoad={() => requestAnimationFrame(() => ScrollTrigger.refresh())}
                   />
@@ -342,8 +365,8 @@ export function PortraitSection() {
 
           {/* Accent lines */}
           <div className="absolute inset-x-0 z-30 pointer-events-none" style={{ top: "50%" }}>
-            <div ref={lineLeftRef} className="absolute left-0 origin-left" style={{ width: "calc(50% - clamp(140px, 21vw, 290px))", height: "0.5px", background: "linear-gradient(to right, transparent, rgba(255,152,162,0.5))", transform: "scaleX(0)" }} />
-            <div ref={lineRightRef} className="absolute right-0 origin-right" style={{ width: "calc(50% - clamp(140px, 21vw, 290px))", height: "0.5px", background: "linear-gradient(to left, transparent, rgba(255,152,162,0.5))", transform: "scaleX(0)" }} />
+            <div ref={lineLeftRef} className="absolute left-0 origin-left" style={{ width: "calc(50% - clamp(130px, 42.5vw, 290px))", height: "0.5px", background: "linear-gradient(to right, transparent, rgba(255,152,162,0.5))", transform: "scaleX(0)" }} />
+            <div ref={lineRightRef} className="absolute right-0 origin-right" style={{ width: "calc(50% - clamp(130px, 42.5vw, 290px))", height: "0.5px", background: "linear-gradient(to left, transparent, rgba(255,152,162,0.5))", transform: "scaleX(0)" }} />
           </div>
 
           {/* Meta strip */}
@@ -356,7 +379,6 @@ export function PortraitSection() {
             ))}
           </div>
 
-          {/* Entrance wipe overlay */}
           <div ref={overlayRef} className="absolute inset-0 z-40 pointer-events-none" style={{ background: "#080808", transformOrigin: "top" }} />
         </div>
       </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useMemo } from "react";
+import React, { useRef, useEffect, useMemo, useCallback } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Environment } from "@react-three/drei";
 import * as THREE from "three";
@@ -11,10 +11,12 @@ const HALF_FOV_RAD = (CAMERA.fov / 2) * (Math.PI / 180);
 
 // ─── Responsive skull config ─────────────────────────────────────────────────
 function getSkullConfig() {
+  // The portrait frame was widened (85vw vs old 42vw) so the skull must be
+  // proportionally smaller to fit inside the head area of the photo.
   return {
-    offset: [0.18, 0.55, -1.75] as [number, number, number],
+    offset: [0.20, 0.50, -1.75] as [number, number, number],
     rotation: [0.70, 0.43, -0.42] as [number, number, number],
-    scale: 1.08,
+    scale: 0.97,
   };
 }
 
@@ -65,8 +67,9 @@ function elementCenterToWorld(rect: DOMRect, objZ: number = 0): [number, number]
   return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, objZ);
 }
 
-function SkullMesh() {
+function SkullMesh({ onReady }: { onReady?: () => void }) {
   const groupRef = useRef<THREE.Group>(null);
+  const readyFiredRef = useRef(false);
 
   const { scene } = useGLTF(
     "/models/skull_clean.glb",
@@ -124,6 +127,13 @@ function SkullMesh() {
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
+
+    // Signal ready after the very first rendered frame — model is loaded & on screen.
+    if (!readyFiredRef.current && onReady) {
+      readyFiredRef.current = true;
+      // Defer one tick so React has finished committing before we update parent state.
+      setTimeout(onReady, 0);
+    }
 
     const SKULL = getSkullConfig();
     const TRAVEL = getTravelConfig();
@@ -247,8 +257,11 @@ function SkullMesh() {
   );
 }
 
-export function GlobalSkullCanvas() {
+export function GlobalSkullCanvas({ onReady }: { onReady?: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const handleReady = useCallback(() => {
+    if (onReady) onReady();
+  }, [onReady]);
 
   useEffect(() => {
     let rafId: number;
@@ -302,7 +315,7 @@ export function GlobalSkullCanvas() {
             <ambientLight key={i} intensity={l.intensity} />
           )
         )}
-        <SkullMesh />
+        <SkullMesh onReady={handleReady} />
       </Canvas>
     </div>
   );
