@@ -77,9 +77,10 @@ export function WordRevealSection() {
         scrollTrigger: {
           trigger: section,
           start: "top top",
-          end: "bottom bottom",
-          pin: false,
+          end: "+=220%",
+          pin: true,
           scrub: 1.35,
+          anticipatePin: 1,
           invalidateOnRefresh: true,
           onUpdate(self) {
             const pct = Math.round(self.progress * 100);
@@ -135,10 +136,8 @@ export function WordRevealSection() {
       <section
         ref={sectionRef}
         id="manifesto"
-        className="relative w-full bg-transparent"
-        style={{ height: "320dvh" }}
+        className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-transparent"
       >
-        <div className="sticky top-0 flex min-h-[100dvh] items-center justify-center overflow-hidden w-full">
         <div
           className="pointer-events-none absolute inset-0 opacity-90"
           style={{
@@ -161,15 +160,13 @@ export function WordRevealSection() {
             {PARAGRAPH_WORDS.map(({ text, accent }, i) => (
               <span
                 key={i}
-                className={`word mr-[0.28em] inline-block will-change-transform ${
-                  accent ? "text-gradient" : ""
-                }`}
+                className={`word mr-[0.28em] inline-block will-change-transform ${accent ? "text-gradient" : ""
+                  }`}
               >
                 {text}
               </span>
             ))}
           </p>
-        </div>
         </div>
       </section>
 

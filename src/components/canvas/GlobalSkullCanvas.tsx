@@ -101,25 +101,23 @@ function SkullMesh() {
   // layout recalculation 60x/sec, which was the #1 cause of skull jitter.
   // Now only updated on scroll (passive) and resize (ResizeObserver).
   const frameRectRef = useRef<DOMRect | null>(null);
-  const portraitProgressRef = useRef(0);
+  const scanlineTopRef = useRef<number>(0);
 
   useEffect(() => {
-    const handleProgress = (e: any) => {
-      portraitProgressRef.current = e.detail;
-    };
-    window.addEventListener("portrait-progress", handleProgress as EventListener);
-
     const updateRects = () => {
       const frame = document.querySelector("[data-portrait-frame]");
+      const scanline = document.querySelector("[data-portrait-scanline]");
       if (frame) frameRectRef.current = frame.getBoundingClientRect();
+      if (scanline) scanlineTopRef.current = scanline.getBoundingClientRect().top;
     };
     window.addEventListener("scroll", updateRects, { passive: true });
-    window.addEventListener("resize", updateRects);
+    const ro = new ResizeObserver(updateRects);
+    const frame = document.querySelector("[data-portrait-frame]");
+    if (frame) ro.observe(frame);
     updateRects();
     return () => {
-      window.removeEventListener("portrait-progress", handleProgress as EventListener);
       window.removeEventListener("scroll", updateRects);
-      window.removeEventListener("resize", updateRects);
+      ro.disconnect();
     };
   }, []);
 
@@ -134,20 +132,20 @@ function SkullMesh() {
     if (!frameRect) return;
 
     const s = state.current;
-    const pPortrait = portraitProgressRef.current;
-    const xrayT = Math.min(pPortrait / 0.8, 1);
+    const slTop = scanlineTopRef.current;
 
-    // ── Scanline completion check (using math instead of DOM queries) ─────────────────────
+    // ── Scanline completion check (using cached rects) ─────────────────────
     let scanlineComplete = s.isDetached;
     let scanlineEndProgress = 0;
 
-    // Trigger zone is the last 15% of the frame scan
-    scanlineEndProgress = THREE.MathUtils.clamp((xrayT - 0.85) / 0.15, 0, 1);
+    const distToBottom = frameRect.bottom - slTop;
+    const triggerZone = frameRect.height * 0.15;
+    scanlineEndProgress = THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1);
 
-    if (!s.isDetached && xrayT >= 0.98) {
+    if (!s.isDetached && slTop >= frameRect.bottom - 2) {
       scanlineComplete = true;
     }
-    if (s.isDetached && xrayT < 0.95) {
+    if (s.isDetached && slTop < frameRect.bottom - 20) {
       scanlineComplete = false;
     }
 
@@ -197,7 +195,7 @@ function SkullMesh() {
       // ── Scale pop ───────────────
       const maxPopScale = 2.8;
 
-      const pPop    = THREE.MathUtils.clamp(p / 0.3, 0, 1);
+      const pPop = THREE.MathUtils.clamp(p / 0.3, 0, 1);
       const pTravel = THREE.MathUtils.clamp(p / 1.0, 0, 1);
 
       let currentScale = SKULL.scale;
@@ -251,47 +249,24 @@ function SkullMesh() {
 
 export function GlobalSkullCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const portraitProgressRef = useRef(0);
-  const frameRectRef = useRef<DOMRect | null>(null);
-
-  useEffect(() => {
-    const handleProgress = (e: any) => {
-      portraitProgressRef.current = e.detail;
-    };
-    window.addEventListener("portrait-progress", handleProgress as EventListener);
-
-    const updateRects = () => {
-      const frame = document.querySelector("[data-portrait-frame]");
-      if (frame) frameRectRef.current = frame.getBoundingClientRect();
-    };
-    window.addEventListener("scroll", updateRects, { passive: true });
-    window.addEventListener("resize", updateRects);
-    updateRects();
-
-    return () => {
-      window.removeEventListener("portrait-progress", handleProgress as EventListener);
-      window.removeEventListener("scroll", updateRects);
-      window.removeEventListener("resize", updateRects);
-    };
-  }, []);
 
   useEffect(() => {
     let rafId: number;
     const updateClipPath = () => {
       const container = containerRef.current;
-      const frameRect = frameRectRef.current;
-      const p = portraitProgressRef.current;
+      const scanline = document.querySelector("[data-portrait-scanline]");
+      const frame = document.querySelector("[data-portrait-frame]");
 
-      if (container && frameRect) {
-        const xrayT = Math.min(p / 0.8, 1);
-        const slTop = frameRect.top + xrayT * frameRect.height;
+      if (container && scanline && frame) {
+        const slRect = scanline.getBoundingClientRect();
+        const frameRect = frame.getBoundingClientRect();
 
-        if (xrayT >= 0.99) {
+        if (slRect.top >= frameRect.bottom - 2) {
           container.style.clipPath = "inset(0px 0px 0px 0px)";
-        } else if (xrayT <= 0.01) {
+        } else if (slRect.top <= frameRect.top + 2) {
           container.style.clipPath = "inset(0px 0px 100% 0px)";
         } else {
-          const bottomClip = window.innerHeight - slTop;
+          const bottomClip = window.innerHeight - slRect.top;
           container.style.clipPath = `inset(0px 0px ${bottomClip}px 0px)`;
         }
       }

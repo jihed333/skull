@@ -36,26 +36,26 @@ function MarqueeLine({ text, speed = 40, reverse = false }: { text: string; spee
 }
 
 export function PortraitSection() {
-  const sectionRef    = useRef<HTMLElement>(null);
-  const wrapRef       = useRef<HTMLDivElement>(null);
-  const frameRef      = useRef<HTMLDivElement>(null);
-  const imageRef      = useRef<HTMLDivElement>(null);
-  const xrayMaskRef   = useRef<HTMLDivElement>(null);
-  const baseImgRef    = useRef<HTMLImageElement>(null);
-  const xrayImgRef    = useRef<HTMLImageElement>(null);
-  const scanlineRef     = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLDivElement>(null);
+  const xrayMaskRef = useRef<HTMLDivElement>(null);
+  const baseImgRef = useRef<HTMLImageElement>(null);
+  const xrayImgRef = useRef<HTMLImageElement>(null);
+  const scanlineRef = useRef<HTMLDivElement>(null);
   const scanlineGlowRef = useRef<HTMLDivElement>(null);
-  const titleTopRef  = useRef<HTMLDivElement>(null);
-  const titleBotRef  = useRef<HTMLDivElement>(null);
-  const lineLeftRef  = useRef<HTMLDivElement>(null);
+  const titleTopRef = useRef<HTMLDivElement>(null);
+  const titleBotRef = useRef<HTMLDivElement>(null);
+  const lineLeftRef = useRef<HTMLDivElement>(null);
   const lineRightRef = useRef<HTMLDivElement>(null);
-  const metaRef      = useRef<HTMLDivElement>(null);
-  const overlayRef   = useRef<HTMLDivElement>(null);
-  const roleRef      = useRef<HTMLDivElement>(null);
+  const metaRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const roleRef = useRef<HTMLDivElement>(null);
 
   const scrollProgressRef = useRef(0);
 
-  const XRAY_END   = 0.8;
+  const XRAY_END = 0.8;
   // ── GSAP animations ──────────────────────────────────────────────────────
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -100,15 +100,14 @@ export function PortraitSection() {
         scrollTrigger: {
           trigger: sectionRef.current,
           start: "top top",
-          end: "bottom bottom",
-          pin: false,
+          end: "+=150%",
+          pin: true,
           scrub: 1,
+          pinSpacing: true,
+          anticipatePin: 1,
           invalidateOnRefresh: true,
           onUpdate: (self) => {
             scrollProgressRef.current = self.progress;
-            window.dispatchEvent(
-              new CustomEvent("portrait-progress", { detail: self.progress })
-            );
           },
         },
       });
@@ -149,27 +148,27 @@ export function PortraitSection() {
     // Single RAF loop for xray + scanline only
 
     const tick = () => {
-      const p     = scrollProgressRef.current;
+      const p = scrollProgressRef.current;
       const frame = frameRef.current;
 
       if (frame) {
-        const frameH      = frame.clientHeight;
-        const xrayT       = Math.min(p / XRAY_END, 1);
-        const clipBottom  = (1 - xrayT) * 100;
-        const scanY       = xrayT * frameH;
+        const frameH = frame.clientHeight;
+        const xrayT = Math.min(p / XRAY_END, 1);
+        const clipBottom = (1 - xrayT) * 100;
+        const scanY = xrayT * frameH;
         const scanVisible = p > 0.01;
-        const opacity     = scanVisible ? "1" : "0";
+        const opacity = scanVisible ? "1" : "0";
 
         if (xrayMaskRef.current) {
           xrayMaskRef.current.style.clipPath = `inset(0% 0% ${clipBottom.toFixed(4)}% 0%)`;
         }
         if (scanlineRef.current) {
           scanlineRef.current.style.transform = `translateY(${scanY}px)`;
-          scanlineRef.current.style.opacity   = opacity;
+          scanlineRef.current.style.opacity = opacity;
         }
         if (scanlineGlowRef.current) {
           scanlineGlowRef.current.style.transform = `translateY(${scanY - 40}px)`;
-          scanlineGlowRef.current.style.opacity   = opacity;
+          scanlineGlowRef.current.style.opacity = opacity;
         }
 
       }
@@ -191,19 +190,17 @@ export function PortraitSection() {
         ref={sectionRef}
         data-portrait-section
         className="relative w-full bg-[#080808]"
-        style={{ height: "250dvh" }}
+        style={{ height: "100dvh" }}
       >
-        <div className="sticky top-0 w-full overflow-hidden" style={{ height: "100dvh" }}>
+        {/* Radial ambient glow */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] rounded-full"
+            style={{ background: "radial-gradient(ellipse, rgba(255,152,162,0.04) 0%, transparent 70%)" }}
+          />
+        </div>
 
-          {/* Radial ambient glow */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] rounded-full"
-              style={{ background: "radial-gradient(ellipse, rgba(255,152,162,0.04) 0%, transparent 70%)" }}
-            />
-          </div>
-
-          <div ref={wrapRef} className="relative h-full">
+        <div ref={wrapRef} className="relative h-full">
 
           {/* Top marquee */}
           <div className="absolute top-6 left-0 right-0 z-20">
@@ -361,7 +358,6 @@ export function PortraitSection() {
 
           {/* Entrance wipe overlay */}
           <div ref={overlayRef} className="absolute inset-0 z-40 pointer-events-none" style={{ background: "#080808", transformOrigin: "top" }} />
-        </div>
         </div>
       </section>
     </>
