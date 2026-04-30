@@ -5,14 +5,14 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Environment } from "@react-three/drei";
 import * as THREE from "three";
 import gsap from "gsap";
+import { KnightModel } from "./KnightModel";
+import { useScrollContext } from "@/components/providers/SmoothScrollProvider";
 
 const CAMERA = { fov: 45, z: 5 } as const;
 const HALF_FOV_RAD = (CAMERA.fov / 2) * (Math.PI / 180);
 
 // ─── Responsive skull config ─────────────────────────────────────────────────
 function getSkullConfig() {
-  // The portrait frame was widened (85vw vs old 42vw) so the skull must be
-  // proportionally smaller to fit inside the head area of the photo.
   return {
     offset: [0.20, 0.50, -1.75] as [number, number, number],
     rotation: [0.70, 0.43, -0.42] as [number, number, number],
@@ -20,7 +20,9 @@ function getSkullConfig() {
   };
 }
 
-const SKULL_MATERIAL = new THREE.MeshPhysicalMaterial({
+// ─── Materials ───────────────────────────────────────────────────────────────
+// Desktop: expensive MeshPhysicalMaterial with clearcoat reflections
+const SKULL_MATERIAL_DESKTOP = new THREE.MeshPhysicalMaterial({
   color: new THREE.Color(0x050505),
   metalness: 1.0,
   roughness: 0.08,
@@ -31,11 +33,27 @@ const SKULL_MATERIAL = new THREE.MeshPhysicalMaterial({
   transparent: true,
 });
 
-const LIGHTS = [
+// Mobile: lighter MeshStandardMaterial — no clearcoat shader pass
+const SKULL_MATERIAL_MOBILE = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0x080808),
+  metalness: 1.0,
+  roughness: 0.18,
+  envMapIntensity: 1.2,
+  transparent: true,
+});
+
+// ─── Light presets ───────────────────────────────────────────────────────────
+const LIGHTS_DESKTOP = [
   { type: "dir", position: [5, 3, 4], intensity: 2.5, color: "#f5f0eb" },
   { type: "dir", position: [-4, 2, -3], intensity: 1.8, color: "#ffb8a0" },
   { type: "point", position: [-2, 3, 3], intensity: 1.2, color: "#ffffff", distance: 15 },
   { type: "ambient", intensity: 0.1, color: "#1a1a2e" },
+] as const;
+
+// Mobile: only 2 lights instead of 4 — saves GPU fragment shader passes
+const LIGHTS_MOBILE = [
+  { type: "dir", position: [5, 3, 4], intensity: 2.2, color: "#f5f0eb" },
+  { type: "ambient", intensity: 0.25, color: "#1a1a2e" },
 ] as const;
 
 // ─── Responsive travel config ────────────────────────────────────────────────
@@ -49,7 +67,6 @@ function getTravelConfig() {
   };
 }
 
-// scrollPixelsForFull: how many px you need to scroll after detach to reach p=1
 const SCROLL_PIXELS_FOR_FULL = 600;
 
 function screenToWorld(px: number, py: number, objZ: number = 0): [number, number] {
@@ -67,8 +84,10 @@ function elementCenterToWorld(rect: DOMRect, objZ: number = 0): [number, number]
   return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, objZ);
 }
 
-function SkullMesh() {
+// ─── Skull Mesh ──────────────────────────────────────────────────────────────
+function SkullMesh({ isMobile }: { isMobile: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
+  const material = isMobile ? SKULL_MATERIAL_MOBILE : SKULL_MATERIAL_DESKTOP;
 
   const { scene } = useGLTF(
     "/models/skull_clean.glb",
@@ -79,12 +98,12 @@ function SkullMesh() {
     const clone = scene.clone(true);
     clone.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.material = SKULL_MATERIAL;
-        child.castShadow = true;
+        child.material = material;
+        child.castShadow = !isMobile; // shadows are expensive on mobile
       }
     });
     return clone;
-  }, [scene]);
+  }, [scene, material, isMobile]);
 
   const easeRotate = useMemo(() => gsap.parseEase("power2.inOut"), []);
   const easeTravel = useMemo(() => gsap.parseEase("power3.inOut"), []);
@@ -99,9 +118,8 @@ function SkullMesh() {
     isDetached: false,
   });
 
-  // FIX: Cache rects — getBoundingClientRect inside useFrame forced a full
-  // layout recalculation 60x/sec, which was the #1 cause of skull jitter.
-  // Now only updated on scroll (passive) and resize (ResizeObserver).
+  // Cache rects — getBoundingClientRect inside useFrame forced a full
+  // layout recalculation 60×/sec which was the #1 cause of skull jitter.
   const frameRectRef = useRef<DOMRect | null>(null);
   const scanlineTopRef = useRef<number>(0);
 
@@ -205,11 +223,9 @@ function SkullMesh() {
       const zPunch = 1.2;
 
       if (p < 0.3) {
-        // Phase 1: Pop up and punch forward
         currentScale = THREE.MathUtils.lerp(SKULL.scale, maxPopScale, easeRotate(pPop));
         currentZ = THREE.MathUtils.lerp(SKULL.offset[2], zPunch, easeRotate(pPop));
       } else {
-        // Phase 2: Scale down and return Z while traveling down
         const pTravelScale = THREE.MathUtils.clamp((p - 0.3) / 0.7, 0, 1);
         currentScale = THREE.MathUtils.lerp(maxPopScale, TRAVEL.scaleRatio, easeTravel(pTravelScale));
         currentZ = THREE.MathUtils.lerp(zPunch, SKULL.offset[2], easeTravel(pTravelScale));
@@ -239,7 +255,7 @@ function SkullMesh() {
     group.rotation.set(s.rotX, s.rotY, s.rotZ);
     group.scale.setScalar(s.scale);
 
-    SKULL_MATERIAL.opacity = s.opacity;
+    material.opacity = s.opacity;
   });
 
   return (
@@ -249,12 +265,54 @@ function SkullMesh() {
   );
 }
 
-export function GlobalSkullCanvas() {
+// ─── Scene content (inside Canvas — has access to R3F + React contexts) ──────
+function SceneContent({ isMobile }: { isMobile: boolean }) {
+  const { scrollProgress } = useScrollContext();
+  const lights = isMobile ? LIGHTS_MOBILE : LIGHTS_DESKTOP;
+
+  return (
+    <>
+      {/* Desktop: full HDR environment for realistic reflections.
+          Mobile: skip it — saves ~2 MB download + heavy GPU convolution. */}
+      {!isMobile && <Environment preset="night" />}
+
+      {lights.map((l, i) =>
+        l.type === "dir" ? (
+          <directionalLight key={i} position={l.position as any} intensity={l.intensity} color={l.color} />
+        ) : l.type === "point" ? (
+          <pointLight key={i} position={l.position as any} intensity={l.intensity} distance={(l as any).distance} />
+        ) : (
+          <ambientLight key={i} intensity={l.intensity} />
+        )
+      )}
+
+      <SkullMesh isMobile={isMobile} />
+
+      {/* Knight: same model that was in Scene.tsx, now sharing this WebGL context */}
+      <KnightModel visible={scrollProgress >= 0.35} isMobile={isMobile} />
+    </>
+  );
+}
+
+// ─── Exported canvas ─────────────────────────────────────────────────────────
+export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Clip-path animation — reveals the skull behind the scanline.
+  // On mobile, throttle to ~30 fps to reduce layout-read overhead.
   useEffect(() => {
     let rafId: number;
-    const updateClipPath = () => {
+    let lastTime = 0;
+    const MOBILE_FRAME_MS = 33; // ~30 fps
+
+    const updateClipPath = (time: number) => {
+      // Throttle on mobile
+      if (isMobile && time - lastTime < MOBILE_FRAME_MS) {
+        rafId = requestAnimationFrame(updateClipPath);
+        return;
+      }
+      lastTime = time;
+
       const container = containerRef.current;
       const scanline = document.querySelector("[data-portrait-scanline]");
       const frame = document.querySelector("[data-portrait-frame]");
@@ -277,10 +335,7 @@ export function GlobalSkullCanvas() {
 
     rafId = requestAnimationFrame(updateClipPath);
     return () => cancelAnimationFrame(rafId);
-  }, []);
-
-  // Lower DPR on mobile for performance
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  }, [isMobile]);
 
   return (
     <div
@@ -290,21 +345,15 @@ export function GlobalSkullCanvas() {
     >
       <Canvas
         camera={{ position: [0, 0, CAMERA.z], fov: CAMERA.fov }}
-        gl={{ alpha: true, antialias: !isMobile }}
-        dpr={isMobile ? [1, 1] : [1, 2]}
+        gl={{
+          alpha: true,
+          antialias: !isMobile,
+          powerPreference: isMobile ? "low-power" : "high-performance",
+        }}
+        dpr={isMobile ? [0.5, 1] : [1, 2]}
         style={{ pointerEvents: "none" }}
       >
-        <Environment preset="night" />
-        {LIGHTS.map((l, i) =>
-          l.type === "dir" ? (
-            <directionalLight key={i} position={l.position as any} intensity={l.intensity} color={l.color} />
-          ) : l.type === "point" ? (
-            <pointLight key={i} position={l.position as any} intensity={l.intensity} distance={(l as any).distance} />
-          ) : (
-            <ambientLight key={i} intensity={l.intensity} />
-          )
-        )}
-        <SkullMesh />
+        <SceneContent isMobile={isMobile} />
       </Canvas>
     </div>
   );

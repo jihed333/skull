@@ -32,26 +32,23 @@ export function useSectionTransition() {
     gsap.set(tech, { position: "relative", zIndex: 10 });
     if (projectsWrapper) gsap.set(projectsWrapper, { position: "relative", zIndex: 1 });
 
-    // FIX: On mobile, do NOT pin the about section at all.
-    // Pinning on mobile with GSAP ScrollTrigger causes the entire page to
-    // stutter because GSAP has to fight the browser's native scroll momentum.
-    // Instead we just let it scroll naturally — no parallax, no pin.
+    // FIX: Re-enabled pin on mobile. The original jitter was caused by two
+    // WebGL contexts fighting the GPU, not by the pin itself.
+    // Now that skull+knight share a single canvas, pin is safe again.
     const st1 = ScrollTrigger.create({
       trigger: about,
       start: "center center",
       endTrigger: tech,
       end: "top top",
-      pin: !isMobile,
+      pin: true,
       pinSpacing: false,
-      anticipatePin: isMobile ? 0 : 1,
+      anticipatePin: 1,
       fastScrollEnd: true,
       preventOverlaps: true,
       invalidateOnRefresh: true,
       onUpdate: (self) => {
-        if (isMobile) {
-          aboutProgressRef.current = self.progress;
-          aboutDistRef.current = self.end - self.start;
-        }
+        aboutProgressRef.current = self.progress;
+        aboutDistRef.current = self.end - self.start;
       },
     });
 

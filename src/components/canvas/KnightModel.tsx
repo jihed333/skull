@@ -11,9 +11,10 @@ gsap.registerPlugin(ScrollTrigger);
 
 interface KnightModelProps {
   visible: boolean;
+  isMobile?: boolean;
 }
 
-export function KnightModel({ visible }: KnightModelProps) {
+export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(0);
   const { gl } = useThree();
@@ -59,40 +60,49 @@ export function KnightModel({ visible }: KnightModelProps) {
     const box = new THREE.Box3().setFromObject(inst);
     const size = box.getSize(new THREE.Vector3());
     const max = Math.max(size.x, size.y, size.z);
-    const scale = max > 0 ? 2.6 / max : 1;
+    const scale = max > 0 ? 1.4 / max : 1;
     inst.scale.setScalar(scale);
 
     const center = box.getCenter(new THREE.Vector3());
     inst.position.sub(center).multiplyScalar(scale);
 
     // 🎨 Cinematic Metal Material (MATCH THINKER)
-    const mat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color("#dfdfdf"),
-      metalness: 1.0,
-      roughness: 0.1,
-      envMapIntensity: 2.0,
-
-      clearcoat: 0.25,
-      clearcoatRoughness: 0.18,
-
-      reflectivity: 3,
-    });
+    // Optimized for mobile: use Standard instead of Physical if mobile
+    const mat = isMobile 
+      ? new THREE.MeshStandardMaterial({
+          color: new THREE.Color("#dfdfdf"),
+          metalness: 1.0,
+          roughness: 0.2,
+          envMapIntensity: 1.0,
+        })
+      : new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color("#dfdfdf"),
+          metalness: 1.0,
+          roughness: 0.1,
+          envMapIntensity: 2.0,
+          clearcoat: 0.25,
+          clearcoatRoughness: 0.18,
+          reflectivity: 3,
+        });
 
     inst.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.material = mat;
-        child.castShadow = true;
-        child.receiveShadow = true;
+        child.castShadow = !isMobile;
+        child.receiveShadow = !isMobile;
       }
     });
 
     return [inst, mat];
-  }, [scene]);
+  }, [scene, isMobile]);
 
   // ─────────────────────────────────────────────
   // Environment Lighting (MATCH THINKER FEEL)
   // ─────────────────────────────────────────────
   useEffect(() => {
+    // Skip heavy environment generation on mobile
+    if (isMobile) return;
+
     const pmrem = new THREE.PMREMGenerator(gl);
     pmrem.compileEquirectangularShader();
 
@@ -120,22 +130,17 @@ export function KnightModel({ visible }: KnightModelProps) {
       pmrem.dispose();
       rt.dispose();
     };
-  }, [gl, material]);
+  }, [gl, material, isMobile]);
 
   // ─────────────────────────────────────────────
   // Animation Loop (Cinematic Motion)
   // ─────────────────────────────────────────────
-  const floatRef = useRef(0);
-
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
     const g = groupRef.current;
     const p = progressRef.current;
 
-    // FIX: Use visibility instead of teleporting to y=20.
-    // Setting y=20 every frame when inactive caused a one-frame flash
-    // because the lerp would start from 20 on re-entry.
     if (p <= 0 || p >= 1) {
       g.visible = false;
       return;
@@ -156,10 +161,6 @@ export function KnightModel({ visible }: KnightModelProps) {
 
     g.rotation.x += (targetRotX - g.rotation.x) * 0.05;
     g.rotation.y += (targetRotY - g.rotation.y) * 0.05;
-
-    // FIX: Removed the per-frame breathing offset (Math.sin added to y each frame).
-    // It conflicted with the lerp above — both writing g.position.y each frame
-    // caused the scale to appear to "jump" as the position oscillated.
   });
 
   // ─────────────────────────────────────────────
@@ -170,32 +171,35 @@ export function KnightModel({ visible }: KnightModelProps) {
       <primitive object={knightInst} />
 
       {/* 🔥 Cinematic Lighting Setup */}
-
-      {/* Key Light */}
-      <spotLight
-        position={[4, 6, 3]}
-        intensity={3.2}
-        angle={0.4}
-        penumbra={0.6}
-        color="#ffffff"
-      />
-
-      {/* Fill Light */}
-      <pointLight
-        position={[-4, -2, -2]}
-        intensity={2.0}
-        color="#ffd1c7"
-      />
-
-      {/* Rim Light (IMPORTANT) */}
-      <pointLight
-        position={[2, -3, -4]}
-        intensity={2.8}
-        color="#ff98a2"
-      />
+      {/* Reduced lighting on mobile */}
+      {!isMobile && (
+        <>
+          <spotLight
+            position={[4, 6, 3]}
+            intensity={3.2}
+            angle={0.4}
+            penumbra={0.6}
+            color="#ffffff"
+          />
+          <pointLight
+            position={[-4, -2, -2]}
+            intensity={2.0}
+            color="#ffd1c7"
+          />
+          <pointLight
+            position={[2, -3, -4]}
+            intensity={2.8}
+            color="#ff98a2"
+          />
+        </>
+      )}
+      {isMobile && (
+        <directionalLight position={[2, 4, 3]} intensity={2.0} color="#ffffff" />
+      )}
     </group>
   );
 }
+
 
 // Preload
 useGLTF.preload(

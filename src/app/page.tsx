@@ -14,7 +14,6 @@ import { PhilosophySection } from "@/components/sections/PhilosophySection";
 import { ContactSection } from "@/components/sections/ContactSection";
 import { WordRevealSection } from "@/components/sections/WordRevealSection";
 import { GlobalSkullCanvas } from "@/components/canvas/GlobalSkullCanvas";
-import Scene from "@/components/canvas/Scene";
 
 import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";
@@ -56,12 +55,11 @@ export default function Home() {
           pointerEvents: isLoading ? "none" : "auto",
         }}
       >
-        {/* FIX: Skip Three.js canvases entirely on mobile.
-            WebGL + GSAP ScrollTrigger + Lenis all competing for the GPU
-            and main thread on a phone = jitter, crashes, client exceptions.
-            Mobile gets the portrait photo without the 3D skull overlay. */}
-        {!isLoading && !isMobile && <GlobalSkullCanvas />}
-        {!isLoading && !isMobile && <Scene />}
+        {/* FIX: Use a single unified canvas for all 3D (Skull + Knight).
+            Two WebGL contexts were the #1 cause of mobile jitter.
+            We now pass isMobile to GlobalSkullCanvas which handles its own
+            internal optimizations (simpler shaders, lower DPR, no shadows). */}
+        {!isLoading && <GlobalSkullCanvas isMobile={isMobile} />}
 
         <div className="relative z-[40] mt-0 w-full">
           <PortraitSection />
