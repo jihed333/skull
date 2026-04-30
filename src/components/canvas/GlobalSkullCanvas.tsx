@@ -299,14 +299,22 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
       s.opacity = 1;
 
       // Ease rotation toward "stare" as scanline approaches bottom.
+      // tTurn naturally reverses as the user scrolls back up, so
+      // damping here makes the return feel smooth in both directions.
       const tTurn = gsap.parseEase("power2.inOut")(
         THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1)
       );
       const stare: [number, number, number] = [0.55, 0.05, 0];
 
-      s.rotX = THREE.MathUtils.lerp(SKULL.rotation[0], stare[0], tTurn);
-      s.rotY = THREE.MathUtils.lerp(SKULL.rotation[1], stare[1], tTurn);
-      s.rotZ = THREE.MathUtils.lerp(SKULL.rotation[2], stare[2], tTurn);
+      const targetRotX = THREE.MathUtils.lerp(SKULL.rotation[0], stare[0], tTurn);
+      const targetRotY = THREE.MathUtils.lerp(SKULL.rotation[1], stare[1], tTurn);
+      const targetRotZ = THREE.MathUtils.lerp(SKULL.rotation[2], stare[2], tTurn);
+
+      // Damp toward the target so the rotation is cinematic in
+      // both the forward (scroll down) and reverse (scroll up) directions.
+      s.rotX = THREE.MathUtils.damp(s.rotX, targetRotX, 9, delta);
+      s.rotY = THREE.MathUtils.damp(s.rotY, targetRotY, 9, delta);
+      s.rotZ = THREE.MathUtils.damp(s.rotZ, targetRotZ, 9, delta);
 
     } else {
       // ── DETACHED PHASE — skull travels away ─────────────────
@@ -316,6 +324,17 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
       }
 
       const pixels = window.scrollY - s.scrollYAtDetach;
+
+      // ── REVERSE: user scrolled back past the detach point ───
+      // Reset so the locked phase takes over and the rotation
+      // smoothly returns to the original tilted pose.
+      if (pixels <= 0) {
+        s.isDetached     = false;
+        s.scrollYAtDetach = -1;
+        s.scrollProgress  = 0;
+        return;
+      }
+
       const rawP   = THREE.MathUtils.clamp(pixels / SCROLL_PIXELS_FOR_FULL, 0, 1);
 
       // Frame-rate-independent damping (delta-based).
