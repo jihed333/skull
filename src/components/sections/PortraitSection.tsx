@@ -27,6 +27,14 @@ import styles from "./PortraitSection.module.css";
 
 gsap.registerPlugin(ScrollTrigger);
 
+/**
+ * Tell GSAP to ignore resize events caused solely by the mobile browser
+ * toolbar appearing / disappearing. Without this, every scroll that hides
+ * the address bar triggers a full ScrollTrigger.refresh() which repositions
+ * the pinned section and causes the skull to jump.
+ */
+ScrollTrigger.config({ ignoreMobileResize: true });
+
 // ── Helpers ──────────────────────────────────────────────────
 
 /** Detect pointer-coarse (touch) or narrow viewport, only once. */
@@ -43,6 +51,21 @@ function idleFrame(fn: () => void): () => void {
   const id = requestAnimationFrame(() => requestAnimationFrame(fn));
   return () => cancelAnimationFrame(id);
 }
+
+/**
+ * Returns window.innerHeight locked to the INITIAL value at first call.
+ * Mobile browsers change innerHeight when the toolbar shows/hides (~60–100px).
+ * By locking to the first measurement we get a stable viewport height that
+ * matches the CSS `100svh` equivalent without any dynamic shifts.
+ */
+const getLockedVH = (() => {
+  let locked = 0;
+  return () => {
+    if (typeof window === "undefined") return 0;
+    if (!locked) locked = window.innerHeight;
+    return locked;
+  };
+})();
 
 // ── MarqueeLine ───────────────────────────────────────────────
 
@@ -101,6 +124,16 @@ export function PortraitSection() {
 
   /** Computed once at mount — never causes re-renders. */
   const isMobile = useMemo(() => detectMobile(), []);
+
+  // ── Lock section height once at mount ────────────────────────
+  // Prevents the browser toolbar show/hide from resizing the section
+  // and breaking GSAP's pin calculations.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    const h = getLockedVH();
+    if (h > 0) section.style.height = `${h}px`;
+  }, []);
 
   // ── Entrance + Scroll animation ─────────────────────────────
   useEffect(() => {

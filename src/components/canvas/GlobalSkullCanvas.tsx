@@ -41,6 +41,35 @@ const HALF_FOV  = (CAM_FOV / 2) * (Math.PI / 180);
 /** Pixels of scroll to complete the full detached travel. */
 const SCROLL_PIXELS_FOR_FULL = 680;
 
+/**
+ * Module-level stable viewport height.
+ * Updated only when the width changes (orientation / real resize)
+ * or the height delta exceeds 100px, which filters out the ~60px
+ * browser toolbar toggle on iOS Safari and Android Chrome.
+ * Shared by SkullMesh and GlobalSkullCanvas so both stay in sync.
+ */
+const stableVH = {
+  current: typeof window !== "undefined" ? window.innerHeight : 700,
+};
+
+if (typeof window !== "undefined") {
+  let prevW = window.innerWidth;
+  let prevH = window.innerHeight;
+  window.addEventListener(
+    "resize",
+    () => {
+      const newW = window.innerWidth;
+      const newH = window.innerHeight;
+      if (newW !== prevW || Math.abs(newH - prevH) > 100) {
+        stableVH.current = newH;
+        prevW = newW;
+        prevH = newH;
+      }
+    },
+    { passive: true }
+  );
+}
+
 // ── Config helpers ────────────────────────────────────────────
 
 interface SkullConfig {
@@ -174,14 +203,25 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
   const frameRectRef   = useRef<DOMRect | null>(null);
   const scanlineTopRef = useRef(0);
   const viewportRef    = useRef({ w: 1024, h: 700 });
+  // Note: stable viewport height is tracked by the module-level
+  // `stableVH` object — no per-component ref needed.
 
-  // ── Viewport update ─────────────────────────────────────────
+  // ── Viewport update ─────────────────────────────────────────────
   useEffect(() => {
     const update = () => {
-      viewportRef.current = {
-        w: window.innerWidth,
-        h: Math.max(window.innerHeight, 560),
-      };
+      const newW = window.innerWidth;
+      const newH = Math.max(window.innerHeight, 560);
+      const prev = viewportRef.current;
+
+      // Skip if only height changed by a small amount — that's the
+      // browser toolbar toggling, not a real layout change.
+      const widthChanged = newW !== prev.w;
+      const bigHeightChange = Math.abs(newH - prev.h) > 100;
+
+      if (widthChanged || bigHeightChange) {
+        viewportRef.current = { w: newW, h: newH };
+        // stableVH is already updated by the module-level resize listener.
+      }
     };
     update();
     window.addEventListener("resize", update, { passive: true });
@@ -393,8 +433,9 @@ export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) 
           // Scanline has completed — show full canvas.
           container.style.clipPath = "inset(0px 0px 0px 0px)";
         } else {
-          // Clip bottom edge to scanline position (+ slight overlap).
-          const clipBottom = window.innerHeight - slRect.top + 10;
+          // Use stableVH instead of live window.innerHeight so the
+          // clip never jumps when the mobile browser bar toggles.
+          const clipBottom = stableVH.current - slRect.top + 10;
           container.style.clipPath = `inset(0px 0px ${clipBottom}px 0px)`;
         }
       }
