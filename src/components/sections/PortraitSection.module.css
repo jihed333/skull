@@ -1,58 +1,416 @@
-/* PortraitSection.module.css */
+/* ============================================================
+   PortraitSection.module.css
+   Rewritten for performance, maintainability & mobile-first design
+   ============================================================ */
+
+/* ── Keyframes ─────────────────────────────────────────────── */
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes marqueeRev {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+/* ── Section Shell ─────────────────────────────────────────── */
 
 .section {
   position: relative;
   width: 100%;
+  height: 100svh;                 /* svh keeps mobile bar changes stable   */
   background-color: #080808;
+  contain: layout style;          /* prevent layout bleed into siblings    */
 }
 
-.wrap {
+/* Inner wrapper – clips overflow from marquees etc.           */
+.inner {
   position: relative;
   height: 100%;
   overflow: hidden;
 }
 
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
+/* ── Background Glow ────────────────────────────────────────── */
 
-@keyframes marqueeRev {
-  from { transform: translateX(-50%); }
-  to { transform: translateX(0); }
-}
-
-@keyframes flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.85; }
-  94% { opacity: 1; }
-  96% { opacity: 0.9; }
-  97% { opacity: 1; }
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.marquee {
-  animation: marquee 40s linear infinite;
-}
-
-.marqueeRev {
-  animation: marqueeRev 40s linear infinite;
-}
-
-.portraitChar {
+.bgGlow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   overflow: hidden;
-  display: inline-block;
 }
 
-.portraitChar span {
-  display: inline-block;
+.bgGlowCircle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(240px, 60vw, 800px);
+  height: clamp(240px, 60vw, 800px);
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 152, 162, 0.04) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
 }
 
-.flicker {
-  animation: flicker 4s infinite;
+/* ── Marquee Rows ───────────────────────────────────────────── */
+
+.marqueeRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marqueeRow--top    { top: 1.5rem; }
+.marqueeRow--bottom { bottom: 1.5rem; }
+
+.marqueeTrack {
+  display: inline-flex;
+  gap: 3rem;
+  will-change: transform;          /* compositor-only promotion            */
+}
+
+.marqueeTrack--fwd { animation: marquee    var(--marquee-dur, 40s) linear infinite; }
+.marqueeTrack--rev { animation: marqueeRev var(--marquee-dur, 40s) linear infinite; }
+
+.marqueeItem {
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.2);
+  font-weight: 300;
+  user-select: none;
+}
+
+.marqueeDot {
+  margin-left: 3rem;
+  color: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Vertical Label (desktop) ───────────────────────────────── */
+
+.verticalLabel {
+  display: none;                   /* hidden on mobile                     */
+  position: absolute;
+  left: 1.5rem;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 30;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+@media (min-width: 768px) {
+  .verticalLabel { display: flex; }
+}
+
+.verticalLabel__text {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.2);
+  text-transform: uppercase;
+}
+
+.verticalLabel__divider {
+  width: 0.5px;
+  height: 3rem;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Name Titles ────────────────────────────────────────────── */
+
+.titleTop {
+  position: absolute;
+  z-index: 10;
+  top: 7vh;
+  left: 3vw;
+  width: clamp(80px, 18vw, 350px);
+  height: clamp(36px, 10vw, 180px);
+  line-height: 0.82;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, opacity;
+  pointer-events: auto;
+}
+
+.titleBottom {
+  position: absolute;
+  z-index: 10;
+  bottom: 10vh;
+  right: 3vw;
+  width: clamp(180px, 38vw, 850px);
+  height: clamp(32px, 9vw, 160px);
+  line-height: 0.82;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  will-change: transform, opacity;
+  pointer-events: auto;
+}
+
+/* ── Role Tag ───────────────────────────────────────────────── */
+
+.roleTag {
+  position: absolute;
+  z-index: 20;
+  top: 9vh;
+  right: 4vw;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  will-change: transform, opacity;
+  pointer-events: auto;
+}
+
+.roleTag__line {
+  width: 2rem;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #ff98a2);
+  flex-shrink: 0;
+}
+
+.roleTag__text {
+  font-family: var(--font-jetbrains-mono, monospace);
+  font-size: clamp(10px, 1.1vw, 12px);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ── Portrait Frame Container ───────────────────────────────── */
+
+.frameOuter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frameSizer {
+  position: relative;
+  width: clamp(260px, 85vw, 580px);
+  height: clamp(340px, 62svh, 780px);
+}
+
+/* ── Portrait Frame ─────────────────────────────────────────── */
+
+.frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: clip-path;          /* GPU-promoted — clip-path driven      */
+  clip-path: inset(48% 0% 48% 0%);/* Initial state — JS opens it          */
+}
+
+/* Four corner accents */
+.cornerTL,
+.cornerTR,
+.cornerBL,
+.cornerBR {
+  position: absolute;
+  z-index: 30;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
+.cornerTL { top: 0; left: 0;  border-left-width: 1px; border-top-width: 1px; border-style: solid; }
+.cornerTR { top: 0; right: 0; border-right-width: 1px; border-top-width: 1px; border-style: solid; }
+.cornerBL { bottom: 0; left: 0;  border-left-width: 1px; border-bottom-width: 1px; border-style: solid; }
+.cornerBR { bottom: 0; right: 0; border-right-width: 1px; border-bottom-width: 1px; border-style: solid; }
+
+/* ── Image Stack ────────────────────────────────────────────── */
+
+.imageStack {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  will-change: transform;
+}
+
+.baseImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+/* X-ray layer — clip-path updated per-frame via JS            */
+.xrayMask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  clip-path: inset(0% 0% 100% 0%);
+  will-change: clip-path;
+}
+
+.xrayImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.7) brightness(0.95) saturate(0.85);
+}
+
+/* Scanline glow — translateY updated per-frame               */
+.scanlineGlow {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 80px;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background: radial-gradient(
+    ellipse 100% 50% at 50% 50%,
+    rgba(255, 152, 162, 0.18) 0%,
+    transparent 70%
+  );
+}
+
+/* Main scanline — translateY updated per-frame               */
+.scanline {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  z-index: 11;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(255, 152, 162, 0.15) 10%,
+    rgba(255, 152, 162, 0.9)  30%,
+    #ff98a2                   50%,
+    rgba(255, 152, 162, 0.9)  70%,
+    rgba(255, 152, 162, 0.15) 90%,
+    transparent               100%
+  );
+  box-shadow:
+    0 0 8px 1px  rgba(255, 152, 162, 0.5),
+    0 0 24px 2px rgba(255, 152, 162, 0.2);
+}
+
+/* ── Frame Footer ───────────────────────────────────────────── */
+
+.frameFooter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(to top, rgba(8, 8, 8, 0.7) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.frameFooter__label {
+  font-family: monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.2em;
+}
+
+/* ── Accent Lines ───────────────────────────────────────────── */
+
+.linesRow {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.lineLeft,
+.lineRight {
+  position: absolute;
+  height: 0.5px;
+  width: calc(50% - clamp(130px, 42.5vw, 290px));
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+.lineLeft {
+  left: 0;
+  transform-origin: left center;
+  background: linear-gradient(to right, transparent, rgba(255, 152, 162, 0.5));
+}
+
+.lineRight {
+  right: 0;
+  transform-origin: right center;
+  background: linear-gradient(to left, transparent, rgba(255, 152, 162, 0.5));
+}
+
+/* ── Meta Status ────────────────────────────────────────────── */
+
+.meta {
+  position: absolute;
+  bottom: 3.5rem;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.metaCell {
+  text-align: center;
+}
+
+.metaCell__label {
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.25);
+  text-transform: uppercase;
+  font-weight: 300;
+}
+
+.metaCell__value {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  margin-top: 0.125rem;
+}
+
+/* ── Entrance Overlay ───────────────────────────────────────── */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: #080808;
+  transform-origin: top;          /* GSAP animates scaleY bottom-to-top   */
+  pointer-events: none;
+  will-change: transform;
 }

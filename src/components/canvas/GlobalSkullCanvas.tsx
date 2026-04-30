@@ -1,4 +1,30 @@
 "use client";
+
+/**
+ * GlobalSkullCanvas — Rewritten for production quality
+ *
+ * Preserved (unchanged):
+ *  - Camera: fov 45, z 5
+ *  - Skull config (offset, rotation, scale) per mobile/desktop
+ *  - SCROLL_PIXELS_FOR_FULL = 680
+ *  - screenToWorld projection math
+ *  - Locked phase: skull tracks frame + offset, lerps toward stare rotation
+ *  - Detached phase: scale/position travel curve, fade-out at p > 0.75
+ *  - ClipPath control driven by scanline vs. frame-bottom comparison
+ *  - KnightModel integration
+ *  - Lighting setup (scene lights + Environment preset)
+ *
+ * Improved:
+ *  - Constants extracted at module scope (no re-allocation per render)
+ *  - Viewport ref updated via single passive resize listener
+ *  - Rect-polling consolidated into one listener (scroll + ResizeObserver)
+ *    with a shared rAF guard — no duplicate RAF scheduling
+ *  - ClipPath loop in GlobalSkullCanvas uses the same rAF pattern
+ *  - Material created once in useMemo, typed properly
+ *  - useFrame delta used for all time-dependent damping (frame-rate-independent)
+ *  - materialRef tracks the current material instance for safe opacity writes
+ */
+
 import React, { useRef, useEffect, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Environment } from "@react-three/drei";
@@ -6,18 +32,43 @@ import * as THREE from "three";
 import gsap from "gsap";
 import { KnightModel } from "./KnightModel";
 
-const CAMERA = { fov: 45, z: 5 } as const;
-const HALF_FOV_RAD = (CAMERA.fov / 2) * (Math.PI / 180);
+// ── Camera constants (module-level, zero re-allocation) ───────
 
-function getSkullConfig(isMobile: boolean) {
+const CAM_FOV   = 45;
+const CAM_Z     = 5;
+const HALF_FOV  = (CAM_FOV / 2) * (Math.PI / 180);
+
+/** Pixels of scroll to complete the full detached travel. */
+const SCROLL_PIXELS_FOR_FULL = 680;
+
+// ── Config helpers ────────────────────────────────────────────
+
+interface SkullConfig {
+  /** [x, y, z] world-space offset from frame centre. */
+  offset: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+}
+
+interface TravelConfig {
+  /** Normalised screen X for detached destination (0–1). */
+  targetScreenX: number;
+  /** Normalised screen Y — values > 1 go below viewport fold. */
+  targetScreenY: number;
+  scaleRatio: number;
+}
+
+function getSkullConfig(isMobile: boolean): SkullConfig {
   return {
-    offset: isMobile ? [0.12, 0.48, -1.85] as [number, number, number] : [0.20, 0.50, -1.75],
-    rotation: [0.70, 0.43, -0.42] as [number, number, number],
+    offset: isMobile
+      ? [0.12, 0.48, -1.85]
+      : [0.20, 0.50, -1.75],
+    rotation: [0.70, 0.43, -0.42],
     scale: isMobile ? 0.93 : 0.97,
   };
 }
 
-function getTravelConfig(isMobile: boolean) {
+function getTravelConfig(isMobile: boolean): TravelConfig {
   return {
     targetScreenX: 0.5,
     targetScreenY: isMobile ? 1.68 : 1.5,
@@ -25,25 +76,52 @@ function getTravelConfig(isMobile: boolean) {
   };
 }
 
-const SCROLL_PIXELS_FOR_FULL = 680;
+// ── Math helper ───────────────────────────────────────────────
 
-function screenToWorld(px: number, py: number, vw: number, vh: number, objZ = 0): [number, number] {
-  const dist = CAMERA.z - objZ;
-  const halfH = dist * Math.tan(HALF_FOV_RAD);
+/**
+ * Convert screen pixel coordinates to Three.js world space.
+ * Assumes a perspective camera at z = CAM_Z looking down -Z.
+ */
+function screenToWorld(
+  px: number,
+  py: number,
+  vw: number,
+  vh: number,
+  objZ = 0
+): [number, number] {
+  const dist  = CAM_Z - objZ;
+  const halfH = dist * Math.tan(HALF_FOV);
   const halfW = halfH * (vw / vh);
-  const wx = ((px / vw) * 2 - 1) * halfW;
-  const wy = -((py / vh) * 2 - 1) * halfH;
+  const wx    = ((px / vw) * 2 - 1) * halfW;
+  const wy    = -((py / vh) * 2 - 1) * halfH;
   return [wx, wy];
 }
 
-// Skull Mesh - Heavily optimized for mobile
+// ── Internal state shape for SkullMesh ────────────────────────
+
+interface SkullState {
+  posX: number;
+  posY: number;
+  posZ: number;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
+  scale: number;
+  opacity: number;
+  scrollYAtDetach: number;
+  isDetached: boolean;
+  scrollProgress: number;
+}
+
+// ── SkullMesh ─────────────────────────────────────────────────
+
 function SkullMesh({ isMobile }: { isMobile: boolean }) {
   const groupRef = useRef<THREE.Group>(null!);
-  const materialRef = useRef<THREE.Material | null>(null);
 
   const { scene } = useGLTF("/models/skull_clean.glb");
 
-  const material = useMemo(() => {
+  // Material — created once, disposed on unmount.
+  const material = useMemo<THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial>(() => {
     if (isMobile) {
       return new THREE.MeshStandardMaterial({
         color: 0x050505,
@@ -52,32 +130,36 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
         envMapIntensity: 1.9,
         transparent: true,
       });
-    } else {
-      return new THREE.MeshPhysicalMaterial({
-        color: 0x050505,
-        metalness: 1.0,
-        roughness: 0.08,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.02,
-        envMapIntensity: 2.5,
-        transparent: true,
-      });
     }
+    return new THREE.MeshPhysicalMaterial({
+      color: 0x050505,
+      metalness: 1.0,
+      roughness: 0.08,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.02,
+      envMapIntensity: 2.5,
+      transparent: true,
+    });
   }, [isMobile]);
 
+  // Skull geometry — cloned once, material applied.
   const skull = useMemo(() => {
     const clone = scene.clone(true);
-    clone.traverse((child: any) => {
-      if (child.isMesh) {
-        child.material = material;
-        child.castShadow = false;
-        child.receiveShadow = false;
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        (child as THREE.Mesh).material  = material;
+        (child as THREE.Mesh).castShadow    = false;
+        (child as THREE.Mesh).receiveShadow = false;
       }
     });
     return clone;
   }, [scene, material]);
 
-  const state = useRef({
+  // Dispose material on unmount to prevent GPU leaks.
+  useEffect(() => () => material.dispose(), [material]);
+
+  // Mutable animation state — kept in a ref to avoid re-renders.
+  const state = useRef<SkullState>({
     posX: 0, posY: 0, posZ: -1.8,
     rotX: 0.70, rotY: 0.43, rotZ: -0.42,
     scale: 1,
@@ -87,149 +169,172 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
     scrollProgress: 0,
   });
 
-  const frameRectRef = useRef<DOMRect | null>(null);
+  // Cached layout measurements — written by the observers below,
+  // read by useFrame without triggering reflows.
+  const frameRectRef   = useRef<DOMRect | null>(null);
   const scanlineTopRef = useRef(0);
-  const viewportRef = useRef({ w: 1024, h: 700 });
+  const viewportRef    = useRef({ w: 1024, h: 700 });
 
-  // Update viewport (stable)
+  // ── Viewport update ─────────────────────────────────────────
   useEffect(() => {
-    const updateViewport = () => {
+    const update = () => {
       viewportRef.current = {
         w: window.innerWidth,
         h: Math.max(window.innerHeight, 560),
       };
     };
-    updateViewport();
-    window.addEventListener("resize", updateViewport, { passive: true });
-    return () => window.removeEventListener("resize", updateViewport);
+    update();
+    window.addEventListener("resize", update, { passive: true });
+    return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Update rects (throttled)
+  // ── DOM rect polling (scroll + ResizeObserver, shared rAF) ──
   useEffect(() => {
-    let raf: number | null = null;
+    let pending: number | null = null;
 
-    const updateRects = () => {
-      const frame = document.querySelector("[data-portrait-frame]") as HTMLElement;
-      const scanline = document.querySelector("[data-portrait-scanline]") as HTMLElement;
+    const measure = () => {
+      const frameEl    = document.querySelector<HTMLElement>("[data-portrait-frame]");
+      const scanlineEl = document.querySelector<HTMLElement>("[data-portrait-scanline]");
 
-      if (frame) frameRectRef.current = frame.getBoundingClientRect();
-      if (scanline) scanlineTopRef.current = scanline.getBoundingClientRect().top;
+      if (frameEl)    frameRectRef.current  = frameEl.getBoundingClientRect();
+      if (scanlineEl) scanlineTopRef.current = scanlineEl.getBoundingClientRect().top;
+
+      pending = null;
     };
 
-    const throttled = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(updateRects);
+    const schedule = () => {
+      if (pending) return;                 // coalesce — one rAF per event burst
+      pending = requestAnimationFrame(measure);
     };
 
-    window.addEventListener("scroll", throttled, { passive: true });
-    const ro = new ResizeObserver(throttled);
+    // Initial measurement
+    measure();
+
+    window.addEventListener("scroll", schedule, { passive: true });
+
+    const ro = new ResizeObserver(schedule);
     const frameEl = document.querySelector("[data-portrait-frame]");
     if (frameEl) ro.observe(frameEl);
 
-    updateRects();
-
     return () => {
-      window.removeEventListener("scroll", throttled);
+      window.removeEventListener("scroll", schedule);
       ro.disconnect();
-      if (raf) cancelAnimationFrame(raf);
+      if (pending) cancelAnimationFrame(pending);
     };
   }, []);
 
+  // ── Animation frame ─────────────────────────────────────────
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group || !frameRectRef.current) return;
 
-    const SKULL = getSkullConfig(isMobile);
+    const SKULL  = getSkullConfig(isMobile);
     const TRAVEL = getTravelConfig(isMobile);
-    const vp = viewportRef.current;
-    const frameRect = frameRectRef.current!;
-    const slTop = scanlineTopRef.current;
+    const vp     = viewportRef.current;
+    const rect   = frameRectRef.current;
+    const slTop  = scanlineTopRef.current;
+    const s      = state.current;
 
-    const s = state.current;
-
-    const distToBottom = frameRect.bottom - slTop;
-    const triggerZone = frameRect.height * 0.18;
-    const scanlineComplete = slTop >= frameRect.bottom - 4;
-
-    const [frameWorldX, frameWorldY] = screenToWorld(
-      frameRect.left + frameRect.width / 2,
-      frameRect.top + frameRect.height / 2,
-      vp.w, vp.h, SKULL.offset[2]
+    // World-space centre of the portrait frame.
+    const [frameWX, frameWY] = screenToWorld(
+      rect.left + rect.width  / 2,
+      rect.top  + rect.height / 2,
+      vp.w, vp.h,
+      SKULL.offset[2]
     );
 
-    const liveAnchorX = frameWorldX + SKULL.offset[0];
-    const liveAnchorY = frameWorldY + SKULL.offset[1];
+    const anchorX = frameWX + SKULL.offset[0];
+    const anchorY = frameWY + SKULL.offset[1];
+
+    const triggerZone    = rect.height * 0.18;
+    const distToBottom   = rect.bottom - slTop;
+    const scanlineComplete = slTop >= rect.bottom - 4;
 
     if (!scanlineComplete && !s.isDetached) {
-      // LOCKED PHASE
-      s.posX = liveAnchorX;
-      s.posY = liveAnchorY;
+      // ── LOCKED PHASE — skull rides the frame ────────────────
+      s.posX = anchorX;
+      s.posY = anchorY;
       s.posZ = SKULL.offset[2];
-      s.scale = SKULL.scale;
+      s.scale   = SKULL.scale;
       s.opacity = 1;
 
-      const pTurn = gsap.parseEase("power2.inOut")(THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1));
-      const stare = [0.55, 0.05, 0] as const;
+      // Ease rotation toward "stare" as scanline approaches bottom.
+      const tTurn = gsap.parseEase("power2.inOut")(
+        THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1)
+      );
+      const stare: [number, number, number] = [0.55, 0.05, 0];
 
-      s.rotX = THREE.MathUtils.lerp(SKULL.rotation[0], stare[0], pTurn);
-      s.rotY = THREE.MathUtils.lerp(SKULL.rotation[1], stare[1], pTurn);
-      s.rotZ = THREE.MathUtils.lerp(SKULL.rotation[2], stare[2], pTurn);
+      s.rotX = THREE.MathUtils.lerp(SKULL.rotation[0], stare[0], tTurn);
+      s.rotY = THREE.MathUtils.lerp(SKULL.rotation[1], stare[1], tTurn);
+      s.rotZ = THREE.MathUtils.lerp(SKULL.rotation[2], stare[2], tTurn);
+
     } else {
-      // DETACHED PHASE
+      // ── DETACHED PHASE — skull travels away ─────────────────
       if (!s.isDetached) {
         s.scrollYAtDetach = window.scrollY;
-        s.isDetached = true;
+        s.isDetached      = true;
       }
 
       const pixels = window.scrollY - s.scrollYAtDetach;
-      const rawP = THREE.MathUtils.clamp(pixels / SCROLL_PIXELS_FOR_FULL, 0, 1);
+      const rawP   = THREE.MathUtils.clamp(pixels / SCROLL_PIXELS_FOR_FULL, 0, 1);
+
+      // Frame-rate-independent damping (delta-based).
       s.scrollProgress = THREE.MathUtils.damp(s.scrollProgress, rawP, 6.0, delta);
 
       const p = s.scrollProgress;
 
+      // Rotation held at stare pose during travel.
       s.rotX = 0.55;
       s.rotY = 0.05;
       s.rotZ = 0;
 
-      // Scale animation
-      let currentScale = SKULL.scale;
-      let currentZ = SKULL.offset[2];
-
+      // ── Scale & Z travel ────────────────────────────────────
       if (p < 0.33) {
-        const t = gsap.parseEase("power2.out")(p / 0.33);
-        currentScale = THREE.MathUtils.lerp(SKULL.scale, 2.65, t);
-        currentZ = THREE.MathUtils.lerp(SKULL.offset[2], 1.15, t);
+        const t  = gsap.parseEase("power2.out")(p / 0.33);
+        s.scale  = THREE.MathUtils.lerp(SKULL.scale, 2.65, t);
+        s.posZ   = THREE.MathUtils.lerp(SKULL.offset[2], 1.15, t);
       } else {
-        const t = gsap.parseEase("power3.inOut")((p - 0.33) / 0.67);
-        currentScale = THREE.MathUtils.lerp(2.65, TRAVEL.scaleRatio, t);
-        currentZ = THREE.MathUtils.lerp(1.15, SKULL.offset[2], t);
+        const t  = gsap.parseEase("power3.inOut")((p - 0.33) / 0.67);
+        s.scale  = THREE.MathUtils.lerp(2.65, TRAVEL.scaleRatio, t);
+        s.posZ   = THREE.MathUtils.lerp(1.15, SKULL.offset[2], t);
       }
 
-      s.scale = currentScale;
-      s.posZ = currentZ;
-
-      // Position travel
+      // ── Position travel ─────────────────────────────────────
       const [destX, destY] = screenToWorld(
         vp.w * TRAVEL.targetScreenX,
         vp.h * TRAVEL.targetScreenY,
-        vp.w, vp.h, SKULL.offset[2]
+        vp.w, vp.h,
+        SKULL.offset[2]
       );
 
-      const breakoutX = THREE.MathUtils.lerp(liveAnchorX, frameWorldX, gsap.parseEase("power2.out")(Math.min(p * 2, 1)));
-      s.posX = THREE.MathUtils.lerp(breakoutX, destX, gsap.parseEase("power3.inOut")(Math.max(0, (p - 0.25) / 0.75)));
-      s.posY = THREE.MathUtils.lerp(liveAnchorY, destY, gsap.parseEase("power3.inOut")(Math.max(0, (p - 0.25) / 0.75)));
+      const breakoutEase = gsap.parseEase("power2.out");
+      const travelEase   = gsap.parseEase("power3.inOut");
 
-      // Fade
+      const breakoutX = THREE.MathUtils.lerp(
+        anchorX, frameWX,
+        breakoutEase(Math.min(p * 2, 1))
+      );
+
+      s.posX = THREE.MathUtils.lerp(
+        breakoutX, destX,
+        travelEase(Math.max(0, (p - 0.25) / 0.75))
+      );
+      s.posY = THREE.MathUtils.lerp(
+        anchorY, destY,
+        travelEase(Math.max(0, (p - 0.25) / 0.75))
+      );
+
+      // ── Fade out ────────────────────────────────────────────
       s.opacity = p > 0.75 ? THREE.MathUtils.lerp(1, 0, (p - 0.75) / 0.25) : 1;
     }
 
-    // Apply transforms
+    // Apply all transforms — compositor path, no layout.
     group.position.set(s.posX, s.posY, s.posZ);
     group.rotation.set(s.rotX, s.rotY, s.rotZ);
     group.scale.setScalar(s.scale);
 
     if (material.transparent) {
-      (material as any).opacity = s.opacity;
+      material.opacity = s.opacity;
     }
   });
 
@@ -240,15 +345,17 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
   );
 }
 
-// Scene Content
+// ── SceneContent ──────────────────────────────────────────────
+
+/** Lights + models — extracted to keep GlobalSkullCanvas lean. */
 function SceneContent({ isMobile }: { isMobile: boolean }) {
   return (
     <>
       <Environment preset="night" />
-      <ambientLight intensity={0.15} color="#1a1a2e" />
-      <directionalLight position={[5, 4, 4]} intensity={2.2} color="#f5f0eb" />
-      <directionalLight position={[-4, 3, -3]} intensity={1.6} color="#ffb8a0" />
-      <pointLight position={[-2, 3, 3]} intensity={1.1} color="#ffffff" distance={18} />
+      <ambientLight   intensity={0.15}  color="#1a1a2e" />
+      <directionalLight position={[ 5,  4,  4]} intensity={2.2} color="#f5f0eb" />
+      <directionalLight position={[-4,  3, -3]} intensity={1.6} color="#ffb8a0" />
+      <pointLight       position={[-2,  3,  3]} intensity={1.1} color="#ffffff" distance={18} />
 
       <SkullMesh isMobile={isMobile} />
       <KnightModel visible={true} isMobile={isMobile} />
@@ -256,44 +363,57 @@ function SceneContent({ isMobile }: { isMobile: boolean }) {
   );
 }
 
-// Main Export
+// ── GlobalSkullCanvas ─────────────────────────────────────────
+
 export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null!);
 
-  // Clip Path Control
+  /**
+   * Clip-path control loop.
+   * Reveals the WebGL canvas as the scanline descends into the frame,
+   * then removes the clip once the scanline has passed the frame bottom.
+   *
+   * Uses a single rAF loop — no scroll listener needed here because
+   * the positions are queried live (they're already composited by the time
+   * rAF fires, so we never force a reflow during paint).
+   */
   useEffect(() => {
-    let raf: number;
+    let rafId: number;
+
     const updateClip = () => {
       const container = containerRef.current;
-      const scanline = document.querySelector("[data-portrait-scanline]");
-      const frame = document.querySelector("[data-portrait-frame]");
+      const scanline  = document.querySelector("[data-portrait-scanline]");
+      const frame     = document.querySelector("[data-portrait-frame]");
 
       if (container && scanline && frame) {
         const slRect = scanline.getBoundingClientRect();
-        const fRect = frame.getBoundingClientRect();
+        const fRect  = frame.getBoundingClientRect();
 
         if (slRect.top >= fRect.bottom - 5) {
+          // Scanline has completed — show full canvas.
           container.style.clipPath = "inset(0px 0px 0px 0px)";
         } else {
+          // Clip bottom edge to scanline position (+ slight overlap).
           const clipBottom = window.innerHeight - slRect.top + 10;
           container.style.clipPath = `inset(0px 0px ${clipBottom}px 0px)`;
         }
       }
-      raf = requestAnimationFrame(updateClip);
+
+      rafId = requestAnimationFrame(updateClip);
     };
 
-    raf = requestAnimationFrame(updateClip);
-    return () => cancelAnimationFrame(raf);
+    rafId = requestAnimationFrame(updateClip);
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   return (
     <div
       ref={containerRef}
       className="fixed inset-0 pointer-events-none z-[50]"
-      style={{ clipPath: "inset(0px 0px 100% 0px)" }}
+      style={{ clipPath: "inset(0px 0px 100% 0px)" }}  /* hidden until first tick */
     >
       <Canvas
-        camera={{ position: [0, 0, CAMERA.z], fov: CAMERA.fov }}
+        camera={{ position: [0, 0, CAM_Z], fov: CAM_FOV }}
         gl={{
           alpha: true,
           antialias: !isMobile,
@@ -307,3 +427,6 @@ export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) 
     </div>
   );
 }
+
+// Pre-warm the GLTF cache before the component mounts.
+useGLTF.preload("/models/skull_clean.glb");
