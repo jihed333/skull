@@ -33,27 +33,22 @@ const SKULL_MATERIAL_DESKTOP = new THREE.MeshPhysicalMaterial({
   transparent: true,
 });
 
-// Mobile: lighter MeshStandardMaterial — no clearcoat shader pass
+// Mobile: lighter MeshStandardMaterial — no clearcoat shader pass.
+// Still needs Environment for reflections (metalness=1 is pure black without envMap).
 const SKULL_MATERIAL_MOBILE = new THREE.MeshStandardMaterial({
-  color: new THREE.Color(0x080808),
+  color: new THREE.Color(0x050505),
   metalness: 1.0,
-  roughness: 0.18,
-  envMapIntensity: 1.2,
+  roughness: 0.12,
+  envMapIntensity: 2.0,
   transparent: true,
 });
 
 // ─── Light presets ───────────────────────────────────────────────────────────
-const LIGHTS_DESKTOP = [
+const LIGHTS = [
   { type: "dir", position: [5, 3, 4], intensity: 2.5, color: "#f5f0eb" },
   { type: "dir", position: [-4, 2, -3], intensity: 1.8, color: "#ffb8a0" },
   { type: "point", position: [-2, 3, 3], intensity: 1.2, color: "#ffffff", distance: 15 },
   { type: "ambient", intensity: 0.1, color: "#1a1a2e" },
-] as const;
-
-// Mobile: only 2 lights instead of 4 — saves GPU fragment shader passes
-const LIGHTS_MOBILE = [
-  { type: "dir", position: [5, 3, 4], intensity: 2.2, color: "#f5f0eb" },
-  { type: "ambient", intensity: 0.25, color: "#1a1a2e" },
 ] as const;
 
 // ─── Responsive travel config ────────────────────────────────────────────────
@@ -69,9 +64,14 @@ function getTravelConfig() {
 
 const SCROLL_PIXELS_FOR_FULL = 600;
 
-function screenToWorld(px: number, py: number, objZ: number = 0): [number, number] {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+// FIX: Accept explicit viewport dimensions so callers can pass cached values.
+// On mobile, window.innerHeight changes when the URL bar shows/hides,
+// causing the skull to jump if read every frame.
+function screenToWorld(
+  px: number, py: number,
+  vw: number, vh: number,
+  objZ: number = 0
+): [number, number] {
   const dist = CAMERA.z - objZ;
   const halfH = dist * Math.tan(HALF_FOV_RAD);
   const halfW = halfH * (vw / vh);
@@ -80,8 +80,10 @@ function screenToWorld(px: number, py: number, objZ: number = 0): [number, numbe
   return [wx, wy];
 }
 
-function elementCenterToWorld(rect: DOMRect, objZ: number = 0): [number, number] {
-  return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, objZ);
+function elementCenterToWorld(
+  rect: DOMRect, vw: number, vh: number, objZ: number = 0
+): [number, number] {
+  return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, vw, vh, objZ);
 }
 
 // ─── Skull Mesh ──────────────────────────────────────────────────────────────
@@ -122,6 +124,20 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
   // layout recalculation 60×/sec which was the #1 cause of skull jitter.
   const frameRectRef = useRef<DOMRect | null>(null);
   const scanlineTopRef = useRef<number>(0);
+
+  // FIX: Cache viewport dimensions. On mobile, window.innerHeight changes
+  // when the URL bar shows/hides, which shifts the screenToWorld mapping
+  // and makes the skull jump. Only update on actual resize, not on scroll.
+  const viewportRef = useRef({ w: 1, h: 1 });
+
+  useEffect(() => {
+    const updateViewport = () => {
+      viewportRef.current = { w: window.innerWidth, h: window.innerHeight };
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
 
   useEffect(() => {
     const updateRects = () => {
@@ -169,8 +185,9 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
       scanlineComplete = false;
     }
 
-    // ── Live anchor in frame ───────────────────────────────────────────────
-    const [frameWorldX, frameWorldY] = elementCenterToWorld(frameRect, SKULL.offset[2]);
+    // ── Live anchor in frame (use cached viewport dims) ────────────────────
+    const vp = viewportRef.current;
+    const [frameWorldX, frameWorldY] = elementCenterToWorld(frameRect, vp.w, vp.h, SKULL.offset[2]);
     const liveAnchorX = frameWorldX + SKULL.offset[0];
     const liveAnchorY = frameWorldY + SKULL.offset[1];
 
@@ -234,10 +251,11 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
       s.scale = currentScale;
       s.posZ = currentZ;
 
-      // ── XY: travel to below viewport ────────────────────────────────────
+      // ── XY: travel to below viewport (use cached viewport dims) ─────────
       const [destX, destY] = screenToWorld(
-        window.innerWidth * TRAVEL.targetScreenX,
-        window.innerHeight * 1.5,
+        vp.w * TRAVEL.targetScreenX,
+        vp.h * 1.5,
+        vp.w, vp.h,
         SKULL.offset[2]
       );
 
@@ -268,15 +286,14 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
 // ─── Scene content (inside Canvas — has access to R3F + React contexts) ──────
 function SceneContent({ isMobile }: { isMobile: boolean }) {
   const { scrollProgress } = useScrollContext();
-  const lights = isMobile ? LIGHTS_MOBILE : LIGHTS_DESKTOP;
 
   return (
     <>
-      {/* Desktop: full HDR environment for realistic reflections.
-          Mobile: skip it — saves ~2 MB download + heavy GPU convolution. */}
-      {!isMobile && <Environment preset="night" />}
+      {/* Environment is needed on ALL devices — metallic materials (metalness=1)
+          are pure black without an env map to reflect. "night" is lightweight. */}
+      <Environment preset="night" />
 
-      {lights.map((l, i) =>
+      {LIGHTS.map((l, i) =>
         l.type === "dir" ? (
           <directionalLight key={i} position={l.position as any} intensity={l.intensity} color={l.color} />
         ) : l.type === "point" ? (
@@ -350,7 +367,7 @@ export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) 
           antialias: !isMobile,
           powerPreference: isMobile ? "low-power" : "high-performance",
         }}
-        dpr={isMobile ? [0.5, 1] : [1, 2]}
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
         style={{ pointerEvents: "none" }}
       >
         <SceneContent isMobile={isMobile} />
