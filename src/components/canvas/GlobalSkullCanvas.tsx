@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useRef, useEffect, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Environment } from "@react-three/drei";
 import * as THREE from "three";
@@ -67,9 +67,8 @@ function elementCenterToWorld(rect: DOMRect, objZ: number = 0): [number, number]
   return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, objZ);
 }
 
-function SkullMesh({ onReady }: { onReady?: () => void }) {
+function SkullMesh() {
   const groupRef = useRef<THREE.Group>(null);
-  const readyFiredRef = useRef(false);
 
   const { scene } = useGLTF(
     "/models/skull_clean.glb",
@@ -127,13 +126,6 @@ function SkullMesh({ onReady }: { onReady?: () => void }) {
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
-
-    // Signal ready after the very first rendered frame — model is loaded & on screen.
-    if (!readyFiredRef.current && onReady) {
-      readyFiredRef.current = true;
-      // Defer one tick so React has finished committing before we update parent state.
-      setTimeout(onReady, 0);
-    }
 
     const SKULL = getSkullConfig();
     const TRAVEL = getTravelConfig();
@@ -257,11 +249,8 @@ function SkullMesh({ onReady }: { onReady?: () => void }) {
   );
 }
 
-export function GlobalSkullCanvas({ onReady }: { onReady?: () => void }) {
+export function GlobalSkullCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const handleReady = useCallback(() => {
-    if (onReady) onReady();
-  }, [onReady]);
 
   useEffect(() => {
     let rafId: number;
@@ -315,7 +304,7 @@ export function GlobalSkullCanvas({ onReady }: { onReady?: () => void }) {
             <ambientLight key={i} intensity={l.intensity} />
           )
         )}
-        <SkullMesh onReady={handleReady} />
+        <SkullMesh />
       </Canvas>
     </div>
   );

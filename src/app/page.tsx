@@ -20,41 +20,19 @@ import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";
 
 export default function Home() {
+  const [isLoading, setIsLoading] = useState(true);
   // FIX: Detect mobile once on mount — avoids SSR mismatch (hydration error source).
   // Never read window during render; only after mount inside useEffect.
   const [isMobile, setIsMobile] = useState(false);
+
   useEffect(() => {
     setIsMobile(
       window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768
     );
   }, []);
 
-  // ── Dual-gate loading: BOTH gates must open before we dismiss the loader ──
-  // Gate 1: LoadingScreen animation timer (4 s) fires onAnimationDone.
-  // Gate 2: Skull model's first rendered frame fires onSkullReady.
-  // On mobile there is no skull, so gate 2 is pre-opened.
-  const [animationDone, setAnimationDone] = useState(false);
-  const [skullReady, setSkullReady] = useState(false); // pre-opened on mobile below
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Pre-open the skull gate on mobile (no WebGL skull rendered there).
-  useEffect(() => {
-    if (isMobile) setSkullReady(true);
-  }, [isMobile]);
-
-  // When BOTH gates are open, dismiss the loading screen.
-  useEffect(() => {
-    if (animationDone && skullReady) {
-      setIsLoading(false);
-    }
-  }, [animationDone, skullReady]);
-
   const handleLoadingComplete = useCallback(() => {
-    setAnimationDone(true);
-  }, []);
-
-  const handleSkullReady = useCallback(() => {
-    setSkullReady(true);
+    setIsLoading(false);
   }, []);
 
   const projectsWrapperRef = useRef<HTMLDivElement>(null);
@@ -78,9 +56,11 @@ export default function Home() {
           pointerEvents: isLoading ? "none" : "auto",
         }}
       >
-        {/* Skull is rendered BEFORE isLoading is false so it can load in the
-            background during the loading screen. onReady fires when it's placed. */}
-        {!isMobile && <GlobalSkullCanvas onReady={handleSkullReady} />}
+        {/* FIX: Skip Three.js canvases entirely on mobile.
+            WebGL + GSAP ScrollTrigger + Lenis all competing for the GPU
+            and main thread on a phone = jitter, crashes, client exceptions.
+            Mobile gets the portrait photo without the 3D skull overlay. */}
+        {!isLoading && !isMobile && <GlobalSkullCanvas />}
         {!isLoading && !isMobile && <Scene />}
 
         <div className="relative z-[40] mt-0 w-full">
