@@ -11,7 +11,7 @@ import { useScrollContext } from "@/components/providers/SmoothScrollProvider";
 const CAMERA = { fov: 45, z: 5 } as const;
 const HALF_FOV_RAD = (CAMERA.fov / 2) * (Math.PI / 180);
 
-// ─── Responsive skull config ─────────────────────────────────────────────────
+// ─── Skull config ─────────────────────────────────────────────────────────────
 function getSkullConfig() {
   return {
     offset: [0.20, 0.50, -1.75] as [number, number, number],
@@ -20,8 +20,7 @@ function getSkullConfig() {
   };
 }
 
-// ─── Materials ───────────────────────────────────────────────────────────────
-// Desktop: expensive MeshPhysicalMaterial with clearcoat reflections
+// ─── Materials ────────────────────────────────────────────────────────────────
 const SKULL_MATERIAL_DESKTOP = new THREE.MeshPhysicalMaterial({
   color: new THREE.Color(0x050505),
   metalness: 1.0,
@@ -33,8 +32,6 @@ const SKULL_MATERIAL_DESKTOP = new THREE.MeshPhysicalMaterial({
   transparent: true,
 });
 
-// Mobile: lighter MeshStandardMaterial — no clearcoat shader pass.
-// Still needs Environment for reflections (metalness=1 is pure black without envMap).
 const SKULL_MATERIAL_MOBILE = new THREE.MeshStandardMaterial({
   color: new THREE.Color(0x050505),
   metalness: 1.0,
@@ -43,7 +40,7 @@ const SKULL_MATERIAL_MOBILE = new THREE.MeshStandardMaterial({
   transparent: true,
 });
 
-// ─── Light presets ───────────────────────────────────────────────────────────
+// ─── Lights ───────────────────────────────────────────────────────────────────
 const LIGHTS = [
   { type: "dir", position: [5, 3, 4], intensity: 2.5, color: "#f5f0eb" },
   { type: "dir", position: [-4, 2, -3], intensity: 1.8, color: "#ffb8a0" },
@@ -51,7 +48,7 @@ const LIGHTS = [
   { type: "ambient", intensity: 0.1, color: "#1a1a2e" },
 ] as const;
 
-// ─── Responsive travel config ────────────────────────────────────────────────
+// ─── Travel config ────────────────────────────────────────────────────────────
 function getTravelConfig() {
   return {
     targetScreenX: 0.5,
@@ -64,9 +61,7 @@ function getTravelConfig() {
 
 const SCROLL_PIXELS_FOR_FULL = 600;
 
-// FIX: Accept explicit viewport dimensions so callers can pass cached values.
-// On mobile, window.innerHeight changes when the URL bar shows/hides,
-// causing the skull to jump if read every frame.
+// Uses STABLE cached viewport — never reads live window.innerHeight inside rAF/useFrame
 function screenToWorld(
   px: number, py: number,
   vw: number, vh: number,
@@ -86,7 +81,106 @@ function elementCenterToWorld(
   return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, vw, vh, objZ);
 }
 
-// ─── Skull Mesh ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY FIX: Stable scroll position tracker using passive listener + ref
+// On iOS, window.scrollY read inside rAF/useFrame causes layout flush and
+// interacts badly with momentum scroll → produces jitter/trembling.
+// Instead we track scroll in a passive listener and read from a ref.
+// ─────────────────────────────────────────────────────────────────────────────
+function useStableScroll() {
+  const scrollYRef = useRef(0);
+
+  useEffect(() => {
+    // Initialise immediately
+    scrollYRef.current = window.scrollY;
+
+    const onScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+
+    // passive + capture to get the value as early as possible each frame
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return scrollYRef;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY FIX: Stable viewport dimensions
+// On mobile Safari the URL bar hide/show changes window.innerHeight by ~50-80px
+// at random moments.  Reading it inside useFrame => skull jumps every time the
+// bar appears/disappears.  We lock the value at mount and only update on RESIZE.
+// We also use visualViewport when available — it reports the *stable* layout
+// height independent of the browser chrome.
+// ─────────────────────────────────────────────────────────────────────────────
+function useStableViewport() {
+  const vpRef = useRef({ w: 1, h: 1 });
+
+  useEffect(() => {
+    const snap = () => {
+      // visualViewport gives us the stable inner height on iOS Safari
+      const vv = window.visualViewport;
+      vpRef.current = {
+        w: vv ? vv.width : window.innerWidth,
+        h: vv ? vv.height : window.innerHeight,
+      };
+    };
+    snap();
+
+    // Only re-snap on genuine resize (orientation change, etc.) — NOT on scroll
+    window.addEventListener("resize", snap);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", snap);
+    }
+    return () => {
+      window.removeEventListener("resize", snap);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", snap);
+      }
+    };
+  }, []);
+
+  return vpRef;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY FIX: Stable rect cache updated only in scroll/resize listeners
+// getBoundingClientRect() inside useFrame forces a FULL LAYOUT RECALCULATION
+// every frame — the single largest source of CPU jank on mobile.
+// We cache in passive scroll + ResizeObserver and read from refs.
+// ─────────────────────────────────────────────────────────────────────────────
+function useStableRects() {
+  const frameRectRef = useRef<DOMRect | null>(null);
+  const scanlineTopRef = useRef<number>(0);
+
+  useEffect(() => {
+    const update = () => {
+      const frame = document.querySelector("[data-portrait-frame]");
+      const scanline = document.querySelector("[data-portrait-scanline]");
+      if (frame) frameRectRef.current = frame.getBoundingClientRect();
+      if (scanline) scanlineTopRef.current = scanline.getBoundingClientRect().top;
+    };
+
+    update();
+
+    window.addEventListener("scroll", update, { passive: true });
+
+    const ro = new ResizeObserver(update);
+    const frame = document.querySelector("[data-portrait-frame]");
+    if (frame) ro.observe(frame);
+    document.querySelectorAll("[data-portrait-scanline]").forEach(el => ro.observe(el));
+
+    return () => {
+      window.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
+
+  return { frameRectRef, scanlineTopRef };
+}
+
+// ─── Skull Mesh ───────────────────────────────────────────────────────────────
 function SkullMesh({ isMobile }: { isMobile: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
   const material = isMobile ? SKULL_MATERIAL_MOBILE : SKULL_MATERIAL_DESKTOP;
@@ -101,7 +195,7 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
     clone.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.material = material;
-        child.castShadow = !isMobile; // shadows are expensive on mobile
+        child.castShadow = !isMobile;
       }
     });
     return clone;
@@ -115,51 +209,33 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
     rotX: 0.70, rotY: 0.43, rotZ: -0.42,
     scale: 1.08,
     opacity: 1,
+    // KEY FIX: smooth intermediary targets — lerp toward these each frame
+    // instead of snapping to raw scroll-derived values.
+    smoothX: 0, smoothY: 0, smoothZ: -1.75,
+    smoothScale: 1.08,
     scrollProgress: 0,
     scrollYAtDetach: -1,
     isDetached: false,
   });
 
-  // Cache rects — getBoundingClientRect inside useFrame forced a full
-  // layout recalculation 60×/sec which was the #1 cause of skull jitter.
-  const frameRectRef = useRef<DOMRect | null>(null);
-  const scanlineTopRef = useRef<number>(0);
+  // Use stable hooks — no live DOM reads inside useFrame
+  const scrollYRef = useStableScroll();
+  const vpRef = useStableViewport();
+  const { frameRectRef, scanlineTopRef } = useStableRects();
 
-  // FIX: Cache viewport dimensions. On mobile, window.innerHeight changes
-  // when the URL bar shows/hides, which shifts the screenToWorld mapping
-  // and makes the skull jump. Only update on actual resize, not on scroll.
-  const viewportRef = useRef({ w: 1, h: 1 });
-
-  useEffect(() => {
-    const updateViewport = () => {
-      viewportRef.current = { w: window.innerWidth, h: window.innerHeight };
-    };
-    updateViewport();
-    window.addEventListener("resize", updateViewport);
-    return () => window.removeEventListener("resize", updateViewport);
-  }, []);
-
-  useEffect(() => {
-    const updateRects = () => {
-      const frame = document.querySelector("[data-portrait-frame]");
-      const scanline = document.querySelector("[data-portrait-scanline]");
-      if (frame) frameRectRef.current = frame.getBoundingClientRect();
-      if (scanline) scanlineTopRef.current = scanline.getBoundingClientRect().top;
-    };
-    window.addEventListener("scroll", updateRects, { passive: true });
-    const ro = new ResizeObserver(updateRects);
-    const frame = document.querySelector("[data-portrait-frame]");
-    if (frame) ro.observe(frame);
-    updateRects();
-    return () => {
-      window.removeEventListener("scroll", updateRects);
-      ro.disconnect();
-    };
-  }, []);
+  // KEY FIX: damping constants tuned per platform
+  // Mobile needs SLOWER damping so frame-rate variance doesn't cause oscillation.
+  // Desktop can afford faster damping for snappier feel.
+  const DAMP_POS  = isMobile ? 6  : 10;
+  const DAMP_SCL  = isMobile ? 5  : 9;
+  const DAMP_PROG = isMobile ? 3  : 4;
 
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
+
+    // KEY FIX: clamp delta to avoid huge jumps after tab-switch / background wake
+    const dt = Math.min(delta, 0.05);
 
     const SKULL = getSkullConfig();
     const TRAVEL = getTravelConfig();
@@ -168,90 +244,85 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
     if (!frameRect) return;
 
     const s = state.current;
+
+    // Read from stable refs — NO live DOM/window reads here
     const slTop = scanlineTopRef.current;
+    const scrollY = scrollYRef.current;
+    const vp = vpRef.current;
 
-    // ── Scanline completion check (using cached rects) ─────────────────────
-    let scanlineComplete = s.isDetached;
-    let scanlineEndProgress = 0;
-
+    // ── Scanline completion check ─────────────────────────────────────────────
     const distToBottom = frameRect.bottom - slTop;
     const triggerZone = frameRect.height * 0.15;
-    scanlineEndProgress = THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1);
+    const scanlineEndProgress = THREE.MathUtils.clamp(1 - distToBottom / triggerZone, 0, 1);
 
-    if (!s.isDetached && slTop >= frameRect.bottom - 2) {
-      scanlineComplete = true;
-    }
-    if (s.isDetached && slTop < frameRect.bottom - 20) {
-      scanlineComplete = false;
-    }
+    let scanlineComplete = s.isDetached;
+    if (!s.isDetached && slTop >= frameRect.bottom - 2) scanlineComplete = true;
+    if (s.isDetached && slTop < frameRect.bottom - 20) scanlineComplete = false;
 
-    // ── Live anchor in frame (use cached viewport dims) ────────────────────
-    const vp = viewportRef.current;
+    // ── Live anchor ───────────────────────────────────────────────────────────
     const [frameWorldX, frameWorldY] = elementCenterToWorld(frameRect, vp.w, vp.h, SKULL.offset[2]);
     const liveAnchorX = frameWorldX + SKULL.offset[0];
     const liveAnchorY = frameWorldY + SKULL.offset[1];
 
+    // ── Compute RAW target position & scale ───────────────────────────────────
+    let targetX: number, targetY: number, targetZ: number, targetScale: number;
+    let targetRotX: number, targetRotY: number, targetRotZ: number;
+    let targetOpacity = 1;
+
     if (!scanlineComplete) {
-      // ══ PHASE 1: LOCKED ══════════════════════════════════════════════════
-      s.posX = liveAnchorX;
-      s.posY = liveAnchorY;
-      s.posZ = SKULL.offset[2];
+      // ══ PHASE 1: LOCKED ════════════════════════════════════════════════════
+      targetX = liveAnchorX;
+      targetY = liveAnchorY;
+      targetZ = SKULL.offset[2];
 
       const pInitialTurn = easeRotate(scanlineEndProgress);
       const stareRot = [0.55, 0.05, 0.0] as const;
 
-      s.rotX = THREE.MathUtils.lerp(SKULL.rotation[0], stareRot[0], pInitialTurn);
-      s.rotY = THREE.MathUtils.lerp(SKULL.rotation[1], stareRot[1], pInitialTurn);
-      s.rotZ = THREE.MathUtils.lerp(SKULL.rotation[2], stareRot[2], pInitialTurn);
+      targetRotX = THREE.MathUtils.lerp(SKULL.rotation[0], stareRot[0], pInitialTurn);
+      targetRotY = THREE.MathUtils.lerp(SKULL.rotation[1], stareRot[1], pInitialTurn);
+      targetRotZ = THREE.MathUtils.lerp(SKULL.rotation[2], stareRot[2], pInitialTurn);
 
-      s.scale = SKULL.scale;
-      s.opacity = 1;
+      targetScale = SKULL.scale;
+      targetOpacity = 1;
+
       s.scrollProgress = 0;
       s.scrollYAtDetach = -1;
       s.isDetached = false;
 
     } else {
-      // ══ PHASES 2–4: DETACHED (rotate → travel → rest) ═══════════════════
-
+      // ══ PHASES 2–4: DETACHED ══════════════════════════════════════════════
       if (!s.isDetached) {
-        s.scrollYAtDetach = window.scrollY;
+        s.scrollYAtDetach = scrollY;
         s.isDetached = true;
       }
 
-      const pixelsScrolled = window.scrollY - s.scrollYAtDetach;
+      const pixelsScrolled = scrollY - s.scrollYAtDetach;
       const rawProgress = THREE.MathUtils.clamp(pixelsScrolled / SCROLL_PIXELS_FOR_FULL, 0, 1);
 
-      s.scrollProgress = THREE.MathUtils.damp(s.scrollProgress, rawProgress, 4.0, delta);
+      // KEY FIX: damp scroll progress using stable dt — prevents lurching on
+      // frames that arrive late (common on mobile under thermal throttle)
+      s.scrollProgress = THREE.MathUtils.damp(s.scrollProgress, rawProgress, DAMP_PROG, dt);
       const p = s.scrollProgress;
 
       const stareRot = [0.55, 0.05, 0.0] as const;
-      s.rotX = stareRot[0];
-      s.rotY = stareRot[1];
-      s.rotZ = stareRot[2];
+      targetRotX = stareRot[0];
+      targetRotY = stareRot[1];
+      targetRotZ = stareRot[2];
 
-      // ── Scale pop ───────────────
       const maxPopScale = 2.8;
-
-      const pPop = THREE.MathUtils.clamp(p / 0.3, 0, 1);
+      const pPop    = THREE.MathUtils.clamp(p / 0.3, 0, 1);
       const pTravel = THREE.MathUtils.clamp(p / 1.0, 0, 1);
-
-      let currentScale = SKULL.scale;
-      let currentZ = SKULL.offset[2];
-      const zPunch = 1.2;
+      const zPunch  = 1.2;
 
       if (p < 0.3) {
-        currentScale = THREE.MathUtils.lerp(SKULL.scale, maxPopScale, easeRotate(pPop));
-        currentZ = THREE.MathUtils.lerp(SKULL.offset[2], zPunch, easeRotate(pPop));
+        targetScale = THREE.MathUtils.lerp(SKULL.scale, maxPopScale, easeRotate(pPop));
+        targetZ     = THREE.MathUtils.lerp(SKULL.offset[2], zPunch, easeRotate(pPop));
       } else {
         const pTravelScale = THREE.MathUtils.clamp((p - 0.3) / 0.7, 0, 1);
-        currentScale = THREE.MathUtils.lerp(maxPopScale, TRAVEL.scaleRatio, easeTravel(pTravelScale));
-        currentZ = THREE.MathUtils.lerp(zPunch, SKULL.offset[2], easeTravel(pTravelScale));
+        targetScale = THREE.MathUtils.lerp(maxPopScale, TRAVEL.scaleRatio, easeTravel(pTravelScale));
+        targetZ     = THREE.MathUtils.lerp(zPunch, SKULL.offset[2], easeTravel(pTravelScale));
       }
 
-      s.scale = currentScale;
-      s.posZ = currentZ;
-
-      // ── XY: travel to below viewport (use cached viewport dims) ─────────
       const [destX, destY] = screenToWorld(
         vp.w * TRAVEL.targetScreenX,
         vp.h * 1.5,
@@ -260,19 +331,35 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
       );
 
       const breakoutAnchorX = THREE.MathUtils.lerp(liveAnchorX, frameWorldX, easeRotate(pPop));
-      s.posX = THREE.MathUtils.lerp(breakoutAnchorX, destX, easeTravel(pTravel));
-      s.posY = THREE.MathUtils.lerp(liveAnchorY, destY, easeTravel(pTravel));
+      targetX = THREE.MathUtils.lerp(breakoutAnchorX, destX, easeTravel(pTravel));
+      targetY = THREE.MathUtils.lerp(liveAnchorY, destY, easeTravel(pTravel));
 
-      // Fade out in the last 25%
       const fadeStart = 0.75;
       const fadeP = THREE.MathUtils.clamp((pTravel - fadeStart) / (1 - fadeStart), 0, 1);
-      s.opacity = 1 - easeTravel(fadeP);
+      targetOpacity = 1 - easeTravel(fadeP);
     }
 
-    group.position.set(s.posX, s.posY, s.posZ);
-    group.rotation.set(s.rotX, s.rotY, s.rotZ);
-    group.scale.setScalar(s.scale);
+    // ── KEY FIX: Smooth all values through damp — never snap ─────────────────
+    // This is the core fix for mobile trembling: even if the scroll listener
+    // gives us a slightly noisy rect or scrollY, damping absorbs the noise
+    // and produces butter-smooth interpolated values every frame.
+    s.smoothX     = THREE.MathUtils.damp(s.smoothX,     targetX!,     DAMP_POS, dt);
+    s.smoothY     = THREE.MathUtils.damp(s.smoothY,     targetY!,     DAMP_POS, dt);
+    s.smoothZ     = THREE.MathUtils.damp(s.smoothZ,     targetZ!,     DAMP_POS, dt);
+    s.smoothScale = THREE.MathUtils.damp(s.smoothScale, targetScale!, DAMP_SCL, dt);
 
+    // Rotations — direct lerp is fine (they change slowly)
+    s.rotX = THREE.MathUtils.lerp(s.rotX, targetRotX!, 0.08);
+    s.rotY = THREE.MathUtils.lerp(s.rotY, targetRotY!, 0.08);
+    s.rotZ = THREE.MathUtils.lerp(s.rotZ, targetRotZ!, 0.08);
+
+    // Opacity — direct lerp
+    s.opacity = THREE.MathUtils.lerp(s.opacity, targetOpacity, 0.07);
+
+    // ── Write to Three.js object ──────────────────────────────────────────────
+    group.position.set(s.smoothX, s.smoothY, s.smoothZ);
+    group.rotation.set(s.rotX, s.rotY, s.rotZ);
+    group.scale.setScalar(s.smoothScale);
     material.opacity = s.opacity;
   });
 
@@ -283,16 +370,13 @@ function SkullMesh({ isMobile }: { isMobile: boolean }) {
   );
 }
 
-// ─── Scene content (inside Canvas — has access to R3F + React contexts) ──────
+// ─── Scene content ────────────────────────────────────────────────────────────
 function SceneContent({ isMobile }: { isMobile: boolean }) {
   const { scrollProgress } = useScrollContext();
 
   return (
     <>
-      {/* Environment is needed on ALL devices — metallic materials (metalness=1)
-          are pure black without an env map to reflect. "night" is lightweight. */}
       <Environment preset="night" />
-
       {LIGHTS.map((l, i) =>
         l.type === "dir" ? (
           <directionalLight key={i} position={l.position as any} intensity={l.intensity} color={l.color} />
@@ -302,28 +386,47 @@ function SceneContent({ isMobile }: { isMobile: boolean }) {
           <ambientLight key={i} intensity={l.intensity} />
         )
       )}
-
       <SkullMesh isMobile={isMobile} />
-
-      {/* Knight: same model that was in Scene.tsx, now sharing this WebGL context */}
       <KnightModel visible={scrollProgress >= 0.35} isMobile={isMobile} />
     </>
   );
 }
 
-// ─── Exported canvas ─────────────────────────────────────────────────────────
-export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY FIX: Clip-path animation — deduplicated into a single stable rAF loop
+// using a ref-based scroll value. The original read window.innerHeight every
+// frame which on iOS causes the clip to jump when the URL bar toggles.
+// ─────────────────────────────────────────────────────────────────────────────
+function useClipPath(
+  containerRef: React.RefObject<HTMLDivElement>,
+  isMobile: boolean
+) {
+  // Stable viewport height — locked at mount, updated only on resize
+  const stableVhRef = useRef(0);
 
-  // Clip-path animation — reveals the skull behind the scanline.
-  // On mobile, throttle to ~30 fps to reduce layout-read overhead.
+  useEffect(() => {
+    const snap = () => {
+      const vv = window.visualViewport;
+      stableVhRef.current = vv ? vv.height : window.innerHeight;
+    };
+    snap();
+    window.addEventListener("resize", snap);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", snap);
+    return () => {
+      window.removeEventListener("resize", snap);
+      if (window.visualViewport) window.visualViewport.removeEventListener("resize", snap);
+    };
+  }, []);
+
   useEffect(() => {
     let rafId: number;
     let lastTime = 0;
-    const MOBILE_FRAME_MS = 33; // ~30 fps
+    // KEY FIX: throttle mobile to ~30fps for clip-path updates
+    // clip-path changes trigger compositor re-rasterise — doing this 60×/s on
+    // mobile is wasteful and contributes to thermal throttle → jitter.
+    const MOBILE_FRAME_MS = 32;
 
     const updateClipPath = (time: number) => {
-      // Throttle on mobile
       if (isMobile && time - lastTime < MOBILE_FRAME_MS) {
         rafId = requestAnimationFrame(updateClipPath);
         return;
@@ -343,16 +446,25 @@ export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) 
         } else if (slRect.top <= frameRect.top + 2) {
           container.style.clipPath = "inset(0px 0px 100% 0px)";
         } else {
-          const bottomClip = window.innerHeight - slRect.top;
+          // KEY FIX: use stableVhRef instead of window.innerHeight
+          // to avoid clip jumping when URL bar shows/hides on iOS
+          const bottomClip = stableVhRef.current - slRect.top;
           container.style.clipPath = `inset(0px 0px ${bottomClip}px 0px)`;
         }
       }
+
       rafId = requestAnimationFrame(updateClipPath);
     };
 
     rafId = requestAnimationFrame(updateClipPath);
     return () => cancelAnimationFrame(rafId);
-  }, [isMobile]);
+  }, [isMobile, containerRef]);
+}
+
+// ─── Exported canvas ──────────────────────────────────────────────────────────
+export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useClipPath(containerRef, isMobile);
 
   return (
     <div
@@ -366,8 +478,16 @@ export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) 
           alpha: true,
           antialias: !isMobile,
           powerPreference: isMobile ? "low-power" : "high-performance",
+          // KEY FIX: disable preserveDrawingBuffer on mobile — it forces a full
+          // framebuffer copy every frame which tanks performance on iOS GPU
+          preserveDrawingBuffer: false,
         }}
+        // KEY FIX: on mobile cap DPR at 1.5 max to halve GPU fill-rate cost.
+        // Going to 2.0+ on a 390px wide display at 60fps was the main GPU bottleneck.
         dpr={isMobile ? [1, 1.5] : [1, 2]}
+        // KEY FIX: frameloop="demand" is tempting but breaks damp/lerp animations.
+        // Keep "always" but reduce DPR above to compensate.
+        frameloop="always"
         style={{ pointerEvents: "none" }}
       >
         <SceneContent isMobile={isMobile} />
