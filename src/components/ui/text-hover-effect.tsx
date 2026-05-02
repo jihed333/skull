@@ -96,7 +96,7 @@ export const TextHoverEffect = ({
 
     useEffect(() => {
         updateCursorPosition(cursor.x, cursor.y);
-    }, [cursor]);
+    }, [cursor, duration]);
 
     return (
         <svg
