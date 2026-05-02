@@ -20,16 +20,6 @@ export function AwwwardsHUD() {
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[9990] hidden md:block mix-blend-difference">
-      {/* Top Right: Menu trigger (magnetic interactive) */}
-      <div className="absolute top-8 right-8 pointer-events-auto">
-        <button className="magnetic w-12 h-12 rounded-full border border-white/20 hover:border-white focus:outline-none focus:ring-1 focus:ring-accent flex items-center justify-center group overflow-hidden transition-colors duration-500 backdrop-blur-md bg-white/5">
-          <div className="flex flex-col gap-[3px] items-end group-hover:gap-[2px] transition-all duration-300">
-             <span className="w-5 h-[2px] bg-white group-hover:w-4 transition-all duration-300"></span>
-             <span className="w-3 h-[2px] bg-white group-hover:w-4 transition-all duration-300"></span>
-          </div>
-        </button>
-      </div>
-
       {/* Bottom Left: Location/Time */}
       <div className="absolute bottom-8 left-8 flex items-center gap-3">
         <div className="w-[6px] h-[6px] rounded-full bg-accent animate-pulse" />

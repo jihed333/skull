@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useScroll } from "framer-motion";
 
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
+import { SectionNav, type NavSection } from "@/components/ui/SectionNav";
 
 import { AboutSection } from "@/components/sections/AboutSection";
 import { TechStackSection } from "@/components/sections/TechStackSection";
@@ -17,6 +18,16 @@ import { GlobalSkullCanvas } from "@/components/canvas/GlobalSkullCanvas";
 
 import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";
+
+// Stable reference — defined outside component so it never triggers re-renders
+const NAV_SECTIONS: NavSection[] = [
+  { id: "hero",         label: "Home" },
+  { id: "about",        label: "About" },
+  { id: "tech-stack",   label: "Tech" },
+  { id: "project-1",    label: "Projects" },
+  { id: "experience",   label: "Experience" },
+  { id: "contact",      label: "Contact" },
+];
 
 export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +58,9 @@ export default function Home() {
     <>
       {isLoading && <LoadingScreen onComplete={handleLoadingComplete} />}
 
+      {/* Premium section navigator — hidden during loading */}
+      {!isLoading && <SectionNav sections={NAV_SECTIONS} />}
+
       <main
         className="relative z-10 w-full overflow-x-hidden"
         style={{
@@ -59,7 +73,7 @@ export default function Home() {
             Two WebGL contexts were the #1 cause of mobile jitter.
             We now pass isMobile to GlobalSkullCanvas which handles its own
             internal optimizations (simpler shaders, lower DPR, no shadows). */}
-        {!isLoading && <GlobalSkullCanvas isMobile={isMobile} />}
+        <GlobalSkullCanvas isMobile={isMobile} />
 
         <div className="relative z-[40] mt-0 w-full">
           <PortraitSection />

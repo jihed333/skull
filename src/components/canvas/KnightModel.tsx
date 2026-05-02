@@ -66,24 +66,17 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
     const center = box.getCenter(new THREE.Vector3());
     inst.position.sub(center).multiplyScalar(scale);
 
-    // 🎨 Cinematic Metal Material (MATCH THINKER)
-    // Optimized for mobile: use Standard instead of Physical if mobile
-    const mat = isMobile 
-      ? new THREE.MeshStandardMaterial({
-          color: new THREE.Color("#dfdfdf"),
-          metalness: 1.0,
-          roughness: 0.2,
-          envMapIntensity: 1.0,
-        })
-      : new THREE.MeshPhysicalMaterial({
-          color: new THREE.Color("#dfdfdf"),
-          metalness: 1.0,
-          roughness: 0.1,
-          envMapIntensity: 2.0,
-          clearcoat: 0.25,
-          clearcoatRoughness: 0.18,
-          reflectivity: 3,
-        });
+    // 🎨 Match the skull's dark obsidian chrome material
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: 0x050505,
+      metalness: 1.0,
+      roughness: 0.08,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.02,
+      envMapIntensity: 2.5,
+      transparent: true,
+      opacity: 1,
+    });
 
     inst.traverse((child) => {
       if (child instanceof THREE.Mesh) {
@@ -99,38 +92,7 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
   // ─────────────────────────────────────────────
   // Environment Lighting (MATCH THINKER FEEL)
   // ─────────────────────────────────────────────
-  useEffect(() => {
-    // Skip heavy environment generation on mobile
-    if (isMobile) return;
-
-    const pmrem = new THREE.PMREMGenerator(gl);
-    pmrem.compileEquirectangularShader();
-
-    const envScene = new THREE.Scene();
-
-    // soft neutral background
-    envScene.background = new THREE.Color(0x1a1a1a);
-
-    const ambient = new THREE.AmbientLight(0xffffff, 0.85);
-    envScene.add(ambient);
-
-    const key = new THREE.DirectionalLight(0xffffff, 2);
-    key.position.set(5, 6, 4);
-    envScene.add(key);
-
-    const rim = new THREE.DirectionalLight(0xff98a2, 1.5);
-    rim.position.set(-4, -2, -3);
-    envScene.add(rim);
-
-    const rt = pmrem.fromScene(envScene);
-    material.envMap = rt.texture;
-    material.needsUpdate = true;
-
-    return () => {
-      pmrem.dispose();
-      rt.dispose();
-    };
-  }, [gl, material, isMobile]);
+  // Environment Lighting is now inherited from GlobalSkullCanvas <Environment preset="night" />
 
   // ─────────────────────────────────────────────
   // Animation Loop (Cinematic Motion)
@@ -147,20 +109,58 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
     }
     g.visible = true;
 
-    // Vertical cinematic travel
-    const targetY = 8 - p * 16;
-    g.position.y += (targetY - g.position.y) * 0.08;
+    // Calculate exact viewport dimensions at the Knight's Z-depth (-1.5)
+    const cam = state.camera as THREE.PerspectiveCamera;
+    const dist = cam.position.z - (-1.5);
+    const fov = cam.fov * (Math.PI / 180);
+    const vHeight = 2 * Math.tan(fov / 2) * dist;
+    const vWidth = vHeight * state.viewport.aspect;
 
-    // Horizontal drift
-    g.position.x = 2 - p * 1.5;
-    g.position.z = -1.5;
+    // Center of the right half of the screen
+    const targetX = vWidth / 4;
+
+    // Travel perfectly straight from top to bottom
+    const startY = vHeight / 2 + 3;
+    const endY = -vHeight / 2 - 4; // Extend runway well below screen
+    let targetY = THREE.MathUtils.lerp(startY, endY, p);
+
+    let scale = 1;
+    let opacity = 1;
+    let targetZ = -1.5;
+
+    // 🔥 Cinematic Fade & Shrink (Awwwards Style)
+    if (p < 0.1) {
+      // Fade in smoothly at the very beginning
+      const progressIn = p / 0.1;
+      opacity = progressIn;
+      scale = 0.5 + 0.5 * progressIn;
+    } else if (p > 0.8) {
+      // Suck into the void at the bottom (bypasses Safari bar issues completely)
+      const progressOut = (p - 0.8) / 0.2; // 0 to 1
+      const easeOut = 1 - Math.pow(1 - progressOut, 3); // Cubic ease out
+      
+      opacity = 1 - Math.pow(progressOut, 2); // Smooth fade out
+      scale = 1 - 0.6 * easeOut; // Shrink significantly
+      targetY -= easeOut * 2.5; // Accelerate downward
+      targetZ = -1.5 - easeOut * 3; // Fall backward into the darkness
+    }
+
+    // Apply strictly to avoid double-damping jitter
+    g.position.set(targetX, targetY, targetZ);
+    g.scale.setScalar(scale);
+
+    // Apply opacity directly to the material
+    if (material.opacity !== opacity) {
+      material.opacity = opacity;
+    }
 
     // Rotation
     const targetRotX = p * Math.PI * 3;
     const targetRotY = -2 + p * Math.PI;
 
-    g.rotation.x += (targetRotX - g.rotation.x) * 0.05;
-    g.rotation.y += (targetRotY - g.rotation.y) * 0.05;
+    // Frame-rate independent damping for smooth rotation
+    g.rotation.x = THREE.MathUtils.damp(g.rotation.x, targetRotX, 4, delta);
+    g.rotation.y = THREE.MathUtils.damp(g.rotation.y, targetRotY, 4, delta);
   });
 
   // ─────────────────────────────────────────────
@@ -169,33 +169,6 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
   return (
     <group ref={groupRef} visible={visible}>
       <primitive object={knightInst} />
-
-      {/* 🔥 Cinematic Lighting Setup */}
-      {/* Reduced lighting on mobile */}
-      {!isMobile && (
-        <>
-          <spotLight
-            position={[4, 6, 3]}
-            intensity={3.2}
-            angle={0.4}
-            penumbra={0.6}
-            color="#ffffff"
-          />
-          <pointLight
-            position={[-4, -2, -2]}
-            intensity={2.0}
-            color="#ffd1c7"
-          />
-          <pointLight
-            position={[2, -3, -4]}
-            intensity={2.8}
-            color="#ff98a2"
-          />
-        </>
-      )}
-      {isMobile && (
-        <directionalLight position={[2, 4, 3]} intensity={2.0} color="#ffffff" />
-      )}
     </group>
   );
 }
