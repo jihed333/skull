@@ -38,6 +38,10 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="dark">
+            <head>
+                {/* Preload critical 3D assets to improve LCP */}
+                <link rel="preload" href="/models/skull_clean.glb" as="fetch" crossOrigin="anonymous" fetchPriority="high" />
+            </head>
             <body
                 className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased text-mercury`}
             >

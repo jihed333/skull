@@ -14,7 +14,8 @@ import { ExperienceSection } from "@/components/sections/ExperienceSection";
 import { PhilosophySection } from "@/components/sections/PhilosophySection";
 import { ContactSection } from "@/components/sections/ContactSection";
 import { WordRevealSection } from "@/components/sections/WordRevealSection";
-import { GlobalSkullCanvas } from "@/components/canvas/GlobalSkullCanvas";
+import dynamic from "next/dynamic";
+const GlobalSkullCanvas = dynamic(() => import("@/components/canvas/GlobalSkullCanvas").then(mod => mod.GlobalSkullCanvas), { ssr: false });
 
 import { PROJECTS } from "@/constants/content";
 import { useSectionTransition } from "@/hooks/useSectionTransition";

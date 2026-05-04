@@ -40,7 +40,7 @@ export const PROJECTS = [
         description: "A demonstration of high-performance web architecture using Next.js and specialized shaders.",
         tags: ["Next.js", "WebGL", "TypeScript"],
         year: "2025",
-        link: "https://europ-gestion.vercel.app/"
+        link: "https://europegestion.eu/"
     },
     {
         title: "PhysioHub360",

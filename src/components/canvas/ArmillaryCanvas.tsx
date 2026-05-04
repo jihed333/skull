@@ -196,6 +196,17 @@ function ArmillaryScene({ onReady }: ArmillarySceneProps) {
     });
 
     threeScene.fog = new THREE.FogExp2(0x080810, 0.07);
+
+    return () => {
+      customTexture.dispose();
+      gltfScene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+          else child.material.dispose();
+        }
+      });
+    };
   }, [gltfScene, threeScene, customTexture]);
 
   useEffect(() => {
@@ -232,7 +243,7 @@ function ArmillaryScene({ onReady }: ArmillarySceneProps) {
       <directionalLight position={[-5, 2, -6]} intensity={1.0} color="#ff98a2" />
       <pointLight position={[0, -2, 3]} intensity={0.5} color="#ffe0ea" distance={20} />
       <pointLight position={[4, -1, -2]} intensity={0.4} color="#ffd4e0" distance={15} />
-      <Environment preset="studio" environmentIntensity={1.8} />
+      <Environment preset="studio" environmentIntensity={1.8} frames={1} resolution={256} />
     </group>
   );
 }
@@ -328,14 +339,14 @@ export default function ArmillaryCanvas() {
         >
           <Canvas
             camera={{ position: [0, 0.2, 6], fov: 40, near: 0.1, far: 100 }}
-            dpr={[1, 1.5]} // Slightly reduced from [1,2] — saves VRAM with no visible diff
+            dpr={[1, 1.5]} 
             frameloop={inView ? "always" : "demand"}
             gl={{
               antialias: true,
               alpha: true,
               toneMapping: THREE.NoToneMapping,
-              // Power preference: high-performance only when in view
               powerPreference: inView ? "high-performance" : "default",
+              stencil: false,
             }}
             style={{ background: "transparent" }}
           >

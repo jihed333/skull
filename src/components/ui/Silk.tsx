@@ -165,7 +165,8 @@ const Silk = ({ speed = 5, scale = 1, color = '#7B7481', noiseIntensity = 1.5, r
         gl={{ 
           antialias: false, 
           powerPreference: "high-performance",
-          alpha: true 
+          alpha: true,
+          stencil: false,
         }}
       >
         <SilkPlane ref={meshRef} uniforms={uniforms} />

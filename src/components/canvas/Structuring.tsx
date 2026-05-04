@@ -25,10 +25,46 @@ export function Structuring({
     const glassShellRef = useRef<THREE.Mesh>(null);
     const frameworksRef = useRef<THREE.LineSegments>(null);
 
-    const { coreGeo, shellGeo } = useMemo(() => ({
-        coreGeo: new THREE.IcosahedronGeometry(1.2, 64),
-        shellGeo: new THREE.IcosahedronGeometry(1.4, 64),
-    }), []);
+    const { coreGeo, shellGeo, coreMat, shellMat, frameworkMat } = useMemo(() => {
+        const cG = new THREE.IcosahedronGeometry(1.2, 32); // Reduced from 64
+        const sG = new THREE.IcosahedronGeometry(1.4, 32); // Reduced from 64
+        
+        const cM = new THREE.MeshStandardMaterial({
+            color: "#0a0a12",
+            emissive: "#4a2a40",
+            emissiveIntensity: 0.7,
+            roughness: 0.7,
+            transparent: true,
+            opacity: 0.9,
+        });
+
+        const sM = new THREE.MeshPhysicalMaterial({
+            color: "#ffffff",
+            transmission: 0.82,
+            roughness: 0.03,
+            ior: 1.45,
+            thickness: 1.4,
+            clearcoat: 0.8,
+            clearcoatRoughness: 0.04,
+            transparent: true,
+        });
+
+        const fM = new THREE.LineBasicMaterial({
+            color: "#ffb3bd",
+            transparent: true,
+            opacity: 0.9,
+            linewidth: 2,
+            blending: THREE.AdditiveBlending,
+        });
+
+        return {
+            coreGeo: cG,
+            shellGeo: sG,
+            coreMat: cM,
+            shellMat: sM,
+            frameworkMat: fM,
+        };
+    }, []);
 
     const frameworkGeometry = useMemo(() => {
         const totalSegments = NUM_FRAMEWORKS * (POINTS_PER_FRAMEWORK - 1);
@@ -37,6 +73,18 @@ export function Structuring({
         geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
         return geo;
     }, []);
+
+    // Disposal cleanup
+    React.useEffect(() => {
+        return () => {
+            coreGeo.dispose();
+            shellGeo.dispose();
+            frameworkGeometry.dispose();
+            coreMat.dispose();
+            shellMat.dispose();
+            frameworkMat.dispose();
+        };
+    }, [coreGeo, shellGeo, frameworkGeometry, coreMat, shellMat, frameworkMat]);
 
     useFrame((state) => {
         if (!groupRef.current || !coreRef.current || !glassShellRef.current || !frameworksRef.current) return;
@@ -69,8 +117,6 @@ export function Structuring({
         coreRef.current.rotation.y = t * 0.13 + pointer.x * 0.09;
         glassShellRef.current.rotation.x = Math.sin(t * 0.45) * 0.25 + pointer.y * 0.1;
 
-        const coreMat = coreRef.current.material as THREE.MeshStandardMaterial;
-        const shellMat = glassShellRef.current.material as THREE.MeshPhysicalMaterial;
         const fade = (1 - easeOut) * Math.min(easeIn + 0.3, 1);
 
         coreMat.opacity = fade * 0.88;
@@ -112,8 +158,6 @@ export function Structuring({
             }
         }
         posAttr.needsUpdate = true;
-
-        const frameworkMat = frameworksRef.current.material as THREE.LineBasicMaterial;
         frameworkMat.opacity = fade * (0.92 + Math.cos(t * 7) * 0.08);
 
         // Position with pan
@@ -128,37 +172,9 @@ export function Structuring({
 
     return (
         <group ref={groupRef}>
-            <mesh ref={coreRef} geometry={coreGeo}>
-                <meshStandardMaterial
-                    color="#0a0a12"
-                    emissive="#4a2a40"
-                    emissiveIntensity={0.7}
-                    roughness={0.7}
-                    transparent
-                    opacity={0.9}
-                />
-            </mesh>
-            <mesh ref={glassShellRef} geometry={shellGeo}>
-                <meshPhysicalMaterial
-                    color="#ffffff"
-                    transmission={0.82}
-                    roughness={0.03}
-                    ior={1.45}
-                    thickness={1.4}
-                    clearcoat={0.8}
-                    clearcoatRoughness={0.04}
-                    transparent
-                />
-            </mesh>
-            <lineSegments ref={frameworksRef} geometry={frameworkGeometry}>
-                <lineBasicMaterial
-                    color="#ffb3bd"
-                    transparent
-                    opacity={0.9}
-                    linewidth={2}
-                    blending={THREE.AdditiveBlending}
-                />
-            </lineSegments>
+            <mesh ref={coreRef} geometry={coreGeo} material={coreMat} frustumCulled={false} />
+            <mesh ref={glassShellRef} geometry={shellGeo} material={shellMat} frustumCulled={false} />
+            <lineSegments ref={frameworksRef} geometry={frameworkGeometry} material={frameworkMat} frustumCulled={false} />
         </group>
     );
 }

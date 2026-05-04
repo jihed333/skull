@@ -27,11 +27,55 @@ export function Harmony({
     const equilibriaRef = useRef<THREE.LineSegments>(null);
     const symbiotesRef = useRef<THREE.InstancedMesh>(null);
 
-    const { coreGeo, shellGeo, symbioteGeo } = useMemo(() => ({
-        coreGeo: new THREE.IcosahedronGeometry(1.2, 64),
-        shellGeo: new THREE.IcosahedronGeometry(1.4, 64),
-        symbioteGeo: new THREE.IcosahedronGeometry(0.05, 3),
-    }), []);
+    const { coreGeo, shellGeo, symbioteGeo, coreMat, shellMat, symbioteMat, equilibriumMat } = useMemo(() => {
+        const cG = new THREE.IcosahedronGeometry(1.2, 32); // Reduced from 64 for perf
+        const sG = new THREE.IcosahedronGeometry(1.4, 32); // Reduced from 64 for perf
+        const symG = new THREE.IcosahedronGeometry(0.05, 3);
+        
+        const cM = new THREE.MeshStandardMaterial({
+            color: "#0a0a12",
+            emissive: "#4a2a40",
+            emissiveIntensity: 0.5,
+            roughness: 0.8,
+            transparent: true,
+            opacity: 0.9,
+        });
+
+        const sM = new THREE.MeshPhysicalMaterial({
+            color: "#ffffff",
+            transmission: 0.5,
+            roughness: 0.05,
+            ior: 1.5,
+            thickness: 1.2,
+            clearcoat: 1,
+            clearcoatRoughness: 0.1,
+            transparent: true,
+        });
+
+        const symM = new THREE.MeshBasicMaterial({
+            color: "#ff98a2",
+            transparent: true,
+            opacity: 0.9,
+        });
+
+        const eM = new THREE.LineBasicMaterial({
+            color: "#ffb3bd",
+            transparent: true,
+            opacity: 0.95,
+            linewidth: 4,
+            blending: THREE.AdditiveBlending,
+        });
+
+        return {
+            coreGeo: cG,
+            shellGeo: sG,
+            symbioteGeo: symG,
+            coreMat: cM,
+            shellMat: sM,
+            symbioteMat: symM,
+            equilibriumMat: eM,
+        };
+    }, []);
 
     const equilibriumGeometry = useMemo(() => {
         const totalSegments = NUM_EQUILIBRIA * (POINTS_PER_EQUILIBRIUM - 1);
@@ -40,6 +84,20 @@ export function Harmony({
         geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
         return geo;
     }, []);
+
+    // Disposal cleanup
+    React.useEffect(() => {
+        return () => {
+            coreGeo.dispose();
+            shellGeo.dispose();
+            symbioteGeo.dispose();
+            equilibriumGeometry.dispose();
+            coreMat.dispose();
+            shellMat.dispose();
+            symbioteMat.dispose();
+            equilibriumMat.dispose();
+        };
+    }, [coreGeo, shellGeo, symbioteGeo, equilibriumGeometry, coreMat, shellMat, symbioteMat, equilibriumMat]);
 
     useMemo(() => {
         if (!symbiotesRef.current) return;
@@ -83,8 +141,6 @@ export function Harmony({
         coreRef.current.rotation.y = t * 0.09 + pointer.x * 0.08;
         glassShellRef.current.rotation.x = Math.sin(t * 0.25) * 0.2 + pointer.y * 0.1;
 
-        const coreMat = coreRef.current.material as THREE.MeshStandardMaterial;
-        const shellMat = glassShellRef.current.material as THREE.MeshPhysicalMaterial;
         const fade = (1 - easeOut) * Math.min(easeIn + 0.3, 1);
 
         coreMat.opacity = fade * 0.9;
@@ -125,8 +181,6 @@ export function Harmony({
             }
         }
         posAttr.needsUpdate = true;
-
-        const equilibriumMat = equilibriaRef.current.material as THREE.LineBasicMaterial;
         equilibriumMat.opacity = fade * 0.95;
 
         // Symbiotes with harmonious flow
@@ -151,8 +205,6 @@ export function Harmony({
             symbiotesRef.current.setMatrixAt(i, dummy.matrix);
         }
         symbiotesRef.current.instanceMatrix.needsUpdate = true;
-
-        const symbioteMat = symbiotesRef.current.material as THREE.MeshBasicMaterial;
         symbioteMat.opacity = fade * 0.9;
 
         // Final position
@@ -167,44 +219,10 @@ export function Harmony({
 
     return (
         <group ref={groupRef}>
-            <mesh ref={coreRef} geometry={coreGeo}>
-                <meshStandardMaterial
-                    color="#0a0a12"
-                    emissive="#4a2a40"
-                    emissiveIntensity={0.5}
-                    roughness={0.8}
-                    transparent
-                    opacity={0.9}
-                />
-            </mesh>
-            <mesh ref={glassShellRef} geometry={shellGeo}>
-                <meshPhysicalMaterial
-                    color="#ffffff"
-                    transmission={0.5}
-                    roughness={0.05}
-                    ior={1.5}
-                    thickness={1.2}
-                    clearcoat={1}
-                    clearcoatRoughness={0.1}
-                    transparent
-                />
-            </mesh>
-            <lineSegments ref={equilibriaRef} geometry={equilibriumGeometry}>
-                <lineBasicMaterial
-                    color="#ffb3bd"
-                    transparent
-                    opacity={0.95}
-                    linewidth={4}
-                    blending={THREE.AdditiveBlending}
-                />
-            </lineSegments>
-            <instancedMesh ref={symbiotesRef} args={[symbioteGeo, undefined, NUM_SYMBIOTES]}>
-                <meshBasicMaterial
-                    color="#ff98a2"
-                    transparent
-                    opacity={0.9}
-                />
-            </instancedMesh>
+            <mesh ref={coreRef} geometry={coreGeo} material={coreMat} frustumCulled={false} />
+            <mesh ref={glassShellRef} geometry={shellGeo} material={shellMat} frustumCulled={false} />
+            <lineSegments ref={equilibriaRef} geometry={equilibriumGeometry} material={equilibriumMat} frustumCulled={false} />
+            <instancedMesh ref={symbiotesRef} args={[symbioteGeo, symbioteMat, NUM_SYMBIOTES]} frustumCulled={false} />
         </group>
     );
 }

@@ -27,11 +27,55 @@ export function Transcendence({
     const expansionsRef = useRef<THREE.LineSegments>(null);
     const warpsRef = useRef<THREE.InstancedMesh>(null);
 
-    const { coreGeo, shellGeo, warpGeo } = useMemo(() => ({
-        coreGeo: new THREE.IcosahedronGeometry(1.2, 64),
-        shellGeo: new THREE.IcosahedronGeometry(1.4, 64),
-        warpGeo: new THREE.DodecahedronGeometry(0.1, 1), // Added detail
-    }), []);
+    const { coreGeo, shellGeo, warpGeo, coreMat, shellMat, expansionMat, warpMat } = useMemo(() => {
+        const cG = new THREE.IcosahedronGeometry(1.2, 32); // Reduced from 64
+        const sG = new THREE.IcosahedronGeometry(1.4, 32); // Reduced from 64
+        const wG = new THREE.DodecahedronGeometry(0.1, 1);
+        
+        const cM = new THREE.MeshStandardMaterial({
+            color: "#0a0a12",
+            emissive: "#4a2a40",
+            emissiveIntensity: 1.0,
+            roughness: 0.55,
+            transparent: true,
+            opacity: 0.75,
+        });
+
+        const sM = new THREE.MeshPhysicalMaterial({
+            color: "#ffffff",
+            transmission: 0.65,
+            roughness: 0.005,
+            ior: 1.38,
+            thickness: 1.7,
+            clearcoat: 0.5,
+            clearcoatRoughness: 0.01,
+            transparent: true,
+        });
+
+        const eM = new THREE.LineBasicMaterial({
+            color: "#ffb3bd",
+            transparent: true,
+            opacity: 0.8,
+            linewidth: 3.5,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const wM = new THREE.MeshBasicMaterial({
+            color: "#ff98a2",
+            transparent: true,
+            opacity: 0.6,
+        });
+
+        return {
+            coreGeo: cG,
+            shellGeo: sG,
+            warpGeo: wG,
+            coreMat: cM,
+            shellMat: sM,
+            expansionMat: eM,
+            warpMat: wM,
+        };
+    }, []);
 
     const expansionGeometry = useMemo(() => {
         const totalSegments = NUM_EXPANSIONS * (POINTS_PER_EXPANSION - 1);
@@ -40,6 +84,20 @@ export function Transcendence({
         geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
         return geo;
     }, []);
+
+    // Disposal cleanup
+    React.useEffect(() => {
+        return () => {
+            coreGeo.dispose();
+            shellGeo.dispose();
+            warpGeo.dispose();
+            expansionGeometry.dispose();
+            coreMat.dispose();
+            shellMat.dispose();
+            expansionMat.dispose();
+            warpMat.dispose();
+        };
+    }, [coreGeo, shellGeo, warpGeo, expansionGeometry, coreMat, shellMat, expansionMat, warpMat]);
 
     useMemo(() => {
         if (!warpsRef.current) return;
@@ -83,8 +141,6 @@ export function Transcendence({
         coreRef.current.rotation.y = t * 0.1 + pointer.x * 0.15;
         glassShellRef.current.rotation.x = Math.sin(t * 0.3) * 0.32 + pointer.y * 0.18;
 
-        const coreMat = coreRef.current.material as THREE.MeshStandardMaterial;
-        const shellMat = glassShellRef.current.material as THREE.MeshPhysicalMaterial;
         const fade = (1 - easeOut) * Math.min(easeIn + 0.3, 1);
 
         coreMat.opacity = fade * 0.75;
@@ -125,8 +181,6 @@ export function Transcendence({
             }
         }
         posAttr.needsUpdate = true;
-
-        const expansionMat = expansionsRef.current.material as THREE.LineBasicMaterial;
         expansionMat.opacity = fade * 0.8;
 
         // Warps with explosive scaling
@@ -150,8 +204,6 @@ export function Transcendence({
             warpsRef.current.setMatrixAt(i, dummy.matrix);
         }
         warpsRef.current.instanceMatrix.needsUpdate = true;
-
-        const warpMat = warpsRef.current.material as THREE.MeshBasicMaterial;
         warpMat.opacity = fade * 0.65;
 
         // Dive
@@ -166,44 +218,10 @@ export function Transcendence({
 
     return (
         <group ref={groupRef}>
-            <mesh ref={coreRef} geometry={coreGeo}>
-                <meshStandardMaterial
-                    color="#0a0a12"
-                    emissive="#4a2a40"
-                    emissiveIntensity={1.0}
-                    roughness={0.55}
-                    transparent
-                    opacity={0.75}
-                />
-            </mesh>
-            <mesh ref={glassShellRef} geometry={shellGeo}>
-                <meshPhysicalMaterial
-                    color="#ffffff"
-                    transmission={0.65}
-                    roughness={0.005}
-                    ior={1.38}
-                    thickness={1.7}
-                    clearcoat={0.5}
-                    clearcoatRoughness={0.01}
-                    transparent
-                />
-            </mesh>
-            <lineSegments ref={expansionsRef} geometry={expansionGeometry}>
-                <lineBasicMaterial
-                    color="#ffb3bd"
-                    transparent
-                    opacity={0.8}
-                    linewidth={3.5}
-                    blending={THREE.AdditiveBlending}
-                />
-            </lineSegments>
-            <instancedMesh ref={warpsRef} args={[warpGeo, undefined, NUM_WARPS]}>
-                <meshBasicMaterial
-                    color="#ff98a2"
-                    transparent
-                    opacity={0.6}
-                />
-            </instancedMesh>
+            <mesh ref={coreRef} geometry={coreGeo} material={coreMat} frustumCulled={false} />
+            <mesh ref={glassShellRef} geometry={shellGeo} material={shellMat} frustumCulled={false} />
+            <lineSegments ref={expansionsRef} geometry={expansionGeometry} material={expansionMat} frustumCulled={false} />
+            <instancedMesh ref={warpsRef} args={[warpGeo, warpMat, NUM_WARPS]} frustumCulled={false} />
         </group>
     );
 }

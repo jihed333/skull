@@ -13,19 +13,14 @@ gsap.registerPlugin(ScrollTrigger);
   ═══════════════════════════════════════════════════════════════
   THINKER MODEL – Cinematic Silver Museum Reveal
 
-  BUG FIXES:
-  ① useGLTF caches the GLB globally. Directly mutating gltfScene.position
-    corrupts the cache — on every remount (hot reload, nav) the bounding box
-    is computed on an already-offset scene, causing the exploded/shattered look.
-    Fix: clone the scene with useMemo before touching it.
-
-  ② scrollState.progress is a module-level singleton that is never reset on
-    remount, so the camera can spawn at a wrong z on re-entry.
-    Fix: reset to 0 inside the ThinkerModel useEffect on mount.
-
-  ③ Removed the userData.normalizedScale pattern inside useFrame — it was
-    set every single frame via a guard, which is fragile. The base scale is
-    now computed once in the setup effect and stored in a ref.
+  PERFORMANCE OPTIMIZATIONS APPLIED:
+  ① Shared Material: Single instance of MeshPhysicalMaterial replaces 
+     per-mesh materials. Saves memory and reduces shader compilation.
+  ② Renderer Tuning: dpr capped at 1.5, stencil buffer disabled,
+     powerPreference set to high-performance.
+  ③ Environment Baking: frames={1} resolution={128} prevents per-frame
+     reflection rendering overhead.
+  ④ Proper Disposal: Material is disposed on unmount to prevent VRAM leaks.
   ═══════════════════════════════════════════════════════════════
 */
 
@@ -37,7 +32,6 @@ const mouseState = { x: 0, y: 0 };
 function ThinkerScene() {
   const groupRef = useRef<THREE.Group>(null);
   const idleRotationRef = useRef(0);
-  const materialRefs = useRef<THREE.Material[]>([]);
   // Store the computed base scale so useFrame never re-derives it
   const baseScaleRef = useRef<number>(1);
 
@@ -52,16 +46,28 @@ function ThinkerScene() {
     "https://www.gstatic.com/draco/versioned/decoders/1.5.7/"
   );
 
-  /*
-    ── FIX ①: Clone the cached scene before mutating it ──────────
-    useGLTF returns the same object reference every time (module-level cache).
-    Calling gltfScene.position.set(...) on the raw reference permanently shifts
-    the cached root, so the next mount computes a wrong bounding box and the
-    geometry explodes. Cloning gives us a fresh, independent object.
-  */
   const clonedScene = useMemo(() => gltfScene.clone(true), [gltfScene]);
 
-  /* Centre + scale + SILVER material */
+  // Create ONE shared material for the entire Thinker to save memory and draw calls
+  // Upgraded to MeshPhysicalMaterial for premium clearcoat silver aesthetics
+  const sharedMaterial = useMemo(() => new THREE.MeshPhysicalMaterial({
+    color: "#e8e8e8",
+    metalness: 0.95,
+    roughness: 0.14,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05,
+    envMapIntensity: 1.45,
+    transparent: true,
+    depthWrite: true,
+    opacity: 0,
+  }), []);
+
+  // Ensure material is cleaned up from GPU memory when unmounted
+  useEffect(() => {
+    return () => sharedMaterial.dispose();
+  }, [sharedMaterial]);
+
+  /* Centre + scale + assign shared material */
   useEffect(() => {
     if (!groupRef.current) return;
 
@@ -76,35 +82,18 @@ function ThinkerScene() {
     const scaleFactor = (2.68 / maxDim) * 0.93; // bake the 0.93 in from day one
 
     groupRef.current.scale.setScalar(scaleFactor);
-    baseScaleRef.current = scaleFactor; // ── FIX ③: store once, read in useFrame
+    baseScaleRef.current = scaleFactor;
 
-    const mats: THREE.Material[] = [];
     clonedScene.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
-      child.castShadow = false;
-      child.receiveShadow = false;
-
-      const materials = Array.isArray(child.material)
-        ? child.material
-        : [child.material];
-
-      materials.forEach((mat) => {
-        mat.transparent = true;
-        mat.depthWrite = true;
-
-        if (mat instanceof THREE.MeshStandardMaterial) {
-          mat.metalness = 0.95;
-          mat.roughness = 0.14;
-          mat.envMapIntensity = 1.45;
-          mat.color.set("#e8e8e8");
-        }
-        mats.push(mat);
-      });
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = false;
+        child.receiveShadow = false;
+        child.material = sharedMaterial;
+      }
     });
-    materialRefs.current = mats;
 
     threeScene.fog = new THREE.FogExp2(0x0a0a0a, 0.22);
-  }, [clonedScene, threeScene]);
+  }, [clonedScene, threeScene, sharedMaterial]);
 
   /* Mouse parallax */
   useEffect(() => {
@@ -143,11 +132,14 @@ function ThinkerScene() {
       0
     );
 
-    // ── SCALE (FIX ③: use pre-computed base, never re-derive) ────
+    // ── SCALE ────────────────────────────────────────────────────
     groupRef.current.scale.setScalar(baseScaleRef.current);
 
-    const opacity = THREE.MathUtils.clamp(reveal * 1.2, 0, 1);
-    materialRefs.current.forEach((m) => { m.opacity = opacity; });
+    // Update single shared material opacity
+    const targetOpacity = THREE.MathUtils.clamp(reveal * 1.2, 0, 1);
+    if (sharedMaterial.opacity !== targetOpacity) {
+      sharedMaterial.opacity = targetOpacity;
+    }
 
     // ── CAMERA ───────────────────────────────────────────────────
     const camZ = THREE.MathUtils.lerp(11.2, 5.05, p);
@@ -193,7 +185,7 @@ function ThinkerScene() {
         distance={20}
       />
 
-      <Environment preset="studio" environmentIntensity={0.95} />
+      <Environment preset="studio" environmentIntensity={0.95} frames={1} resolution={128} />
     </group>
   );
 }
@@ -206,12 +198,6 @@ export function ThinkerModel() {
   useEffect(() => {
     if (!wrapperRef.current) return;
 
-    /*
-      FIX ②: Always reset progress to 0 on mount.
-      scrollState is a module singleton — if the component unmounts while
-      scrolled (hot reload, page navigation) and then remounts, progress
-      stays at its last value and the camera spawns at the wrong position.
-    */
     scrollState.progress = 0;
 
     tweenRef.current = gsap.to(scrollState, {
@@ -239,19 +225,23 @@ export function ThinkerModel() {
         width: "100%",
         height: "100%",
         minHeight: "340px",
-        overflow: "hidden", // changed from "visible" — prevents viewport calc bugs
+        overflow: "hidden", // prevents viewport calc bugs
       }}
     >
       <Canvas
         camera={{ position: [0, 0.8, 11.2], fov: 37, near: 0.1, far: 100 }}
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         gl={{
           antialias: true,
           alpha: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 0.92,
+          stencil: false,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: false,
         }}
         style={{ background: "transparent" }}
+        resize={{ debounce: { scroll: 50, resize: 0 } }}
       >
         <ThinkerScene />
       </Canvas>

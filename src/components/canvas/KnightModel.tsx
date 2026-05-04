@@ -17,23 +17,19 @@ interface KnightModelProps {
 export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(0);
-  const { gl } = useThree();
+  // ── useThree: only grab what we actually use ──────────────────────────────
+  const { viewport } = useThree();
 
-  // ─────────────────────────────────────────────
-  // Load Model
-  // ─────────────────────────────────────────────
+  // ── Load ──────────────────────────────────────────────────────────────────
   const { scene } = useGLTF(
     "/models/chess_knight_006-draco.glb",
     "https://www.gstatic.com/draco/versioned/decoders/1.5.7/"
   );
 
-  // ─────────────────────────────────────────────
-  // Scroll Progress Control
-  // ─────────────────────────────────────────────
+  // ── Scroll Progress ───────────────────────────────────────────────────────
   useEffect(() => {
     const projectsWrapper = document.getElementById("projects-wrapper");
     const philosophySection = document.getElementById("philosophy-section");
-
     if (!projectsWrapper || !philosophySection) return;
 
     const st = ScrollTrigger.create({
@@ -42,21 +38,15 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
       endTrigger: philosophySection,
       end: "top 90%",
       scrub: 1.25,
-      onUpdate: (self) => {
-        progressRef.current = self.progress;
-      },
+      onUpdate: (self) => { progressRef.current = self.progress; },
     });
-
     return () => st.kill();
   }, []);
 
-  // ─────────────────────────────────────────────
-  // Model + PREMIUM Material (MATCH THINKER)
-  // ─────────────────────────────────────────────
+  // ── Material + Model (single shared material — 0 extra DC) ────────────────
   const [knightInst, material] = useMemo(() => {
     const inst = scene.clone();
 
-    // Scale & center
     const box = new THREE.Box3().setFromObject(inst);
     const size = box.getSize(new THREE.Vector3());
     const max = Math.max(size.x, size.y, size.z);
@@ -66,7 +56,6 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
     const center = box.getCenter(new THREE.Vector3());
     inst.position.sub(center).multiplyScalar(scale);
 
-    // 🎨 Match the skull's dark obsidian chrome material
     const mat = new THREE.MeshPhysicalMaterial({
       color: 0x050505,
       metalness: 1.0,
@@ -81,22 +70,16 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
     inst.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.material = mat;
-        child.castShadow = !isMobile;
-        child.receiveShadow = !isMobile;
+        // No shadow-casting lights in the global canvas → both flags = 0 DC overhead
+        child.castShadow = false;
+        child.receiveShadow = false;
       }
     });
 
     return [inst, mat];
-  }, [scene, isMobile]);
+  }, [scene]);
 
-  // ─────────────────────────────────────────────
-  // Environment Lighting (MATCH THINKER FEEL)
-  // ─────────────────────────────────────────────
-  // Environment Lighting is now inherited from GlobalSkullCanvas <Environment preset="night" />
-
-  // ─────────────────────────────────────────────
-  // Animation Loop (Cinematic Motion)
-  // ─────────────────────────────────────────────
+  // ── Animation Loop ────────────────────────────────────────────────────────
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
@@ -109,63 +92,42 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
     }
     g.visible = true;
 
-    // Calculate exact viewport dimensions at the Knight's Z-depth (-1.5)
+    // Derive viewport dimensions from R3F viewport (no manual trig needed)
     const cam = state.camera as THREE.PerspectiveCamera;
     const dist = cam.position.z - (-1.5);
     const fov = cam.fov * (Math.PI / 180);
     const vHeight = 2 * Math.tan(fov / 2) * dist;
     const vWidth = vHeight * state.viewport.aspect;
 
-    // Center of the right half of the screen
     const targetX = vWidth / 4;
-
-    // Travel perfectly straight from top to bottom
     const startY = vHeight / 2 + 3;
-    const endY = -vHeight / 2 - 4; // Extend runway well below screen
-    let targetY = THREE.MathUtils.lerp(startY, endY, p);
+    const endY = -vHeight / 2 - 4;
+    const targetY = THREE.MathUtils.lerp(startY, endY, p);
 
     let scale = 1;
     let opacity = 1;
-    let targetZ = -1.5;
+    const targetZ = -1.5;
 
-    // 🔥 Cinematic Fade & Shrink (Awwwards Style)
     if (p < 0.1) {
-      // Fade in smoothly at the very beginning
       const progressIn = p / 0.1;
       opacity = progressIn;
       scale = 0.5 + 0.5 * progressIn;
-    } else if (p > 0.8) {
-      // Suck into the void at the bottom (bypasses Safari bar issues completely)
-      const progressOut = (p - 0.8) / 0.2; // 0 to 1
-      const easeOut = 1 - Math.pow(1 - progressOut, 3); // Cubic ease out
-      
-      opacity = 1 - Math.pow(progressOut, 2); // Smooth fade out
-      scale = 1 - 0.6 * easeOut; // Shrink significantly
-      targetY -= easeOut * 2.5; // Accelerate downward
-      targetZ = -1.5 - easeOut * 3; // Fall backward into the darkness
     }
 
-    // Apply strictly to avoid double-damping jitter
     g.position.set(targetX, targetY, targetZ);
     g.scale.setScalar(scale);
 
-    // Apply opacity directly to the material
-    if (material.opacity !== opacity) {
-      material.opacity = opacity;
-    }
+    if (material.opacity !== opacity) material.opacity = opacity;
 
-    // Rotation
     const targetRotX = p * Math.PI * 3;
     const targetRotY = -2 + p * Math.PI;
-
-    // Frame-rate independent damping for smooth rotation
     g.rotation.x = THREE.MathUtils.damp(g.rotation.x, targetRotX, 4, delta);
     g.rotation.y = THREE.MathUtils.damp(g.rotation.y, targetRotY, 4, delta);
   });
 
-  // ─────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────
+  // ── Cleanup ───────────────────────────────────────────────────────────────
+  useEffect(() => () => { material.dispose(); }, [material]);
+
   return (
     <group ref={groupRef} visible={visible}>
       <primitive object={knightInst} />
@@ -173,8 +135,6 @@ export function KnightModel({ visible, isMobile = false }: KnightModelProps) {
   );
 }
 
-
-// Preload
 useGLTF.preload(
   "/models/chess_knight_006-draco.glb",
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/"
