@@ -300,7 +300,7 @@ export function GlobalSkullCanvas({ isMobile = false }: { isMobile?: boolean }) 
       ref={containerRef}
       className="fixed inset-0 pointer-events-none z-[50]"
       style={{
-        height: "100dvh",
+        height: "100svh",
         clipPath: "inset(0px 0px 100% 0px)",
         transform: "translate3d(0, 0, 0)",
         willChange: "clip-path",

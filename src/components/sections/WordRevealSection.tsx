@@ -136,7 +136,7 @@ export function WordRevealSection() {
       <section
         ref={sectionRef}
         id="manifesto"
-        className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-transparent"
+        className="relative flex min-h-[100svh] min-h-[100dvh] items-center justify-center overflow-hidden bg-transparent"
       >
         <div
           className="pointer-events-none absolute inset-0 opacity-90"

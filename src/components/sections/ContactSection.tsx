@@ -260,7 +260,7 @@ export function ContactSection() {
         <section
             ref={sectionRef}
             id="contact"
-            className="section-container h-[100dvh] min-h-0 relative overflow-hidden z-[150]"
+            className="section-container h-[100svh] h-[100dvh] min-h-0 relative overflow-hidden z-[150]"
         >
             {/* ── Armillary 3D Model — Full background canvas ── */}
             <ArmillaryCanvas />

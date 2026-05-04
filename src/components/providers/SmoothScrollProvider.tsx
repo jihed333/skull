@@ -72,39 +72,34 @@ export function SmoothScrollProvider({
                     limitCallbacks: true,
                 });
 
-                if (!isTouchDevice()) {
-                    const lenisModule = await import("lenis");
-                    const Lenis = lenisModule.default;
+                // Enable Lenis on all devices, including mobile/touch.
+                // Lenis provides much better viewport stability on mobile than native scroll
+                // by controlling the scroll event and preventing browser chrome jitter.
+                const lenisModule = await import("lenis");
+                const Lenis = lenisModule.default;
 
-                    lenis = new Lenis({
-                        lerp: 0.035,
-                        smoothWheel: true,
-                        wheelMultiplier: 0.4,
-                    });
+                lenis = new Lenis({
+                    duration: isTouchDevice() ? 1.2 : 1.5,
+                    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+                    smoothWheel: true,
+                    wheelMultiplier: 0.8,
+                    touchMultiplier: 1.5, // Faster response on touch
+                    infinite: false,
+                });
 
-                    lenisRef.current = lenis;
+                lenisRef.current = lenis;
 
-                    lenis.on("scroll", (e: any) => {
-                        onScroll(e);
-                        ScrollTriggerModule.update();
-                    });
+                lenis.on("scroll", (e: any) => {
+                    onScroll(e);
+                    ScrollTriggerModule.update();
+                });
 
-                    const rafCallback = (time: number) => {
-                        lenis.raf(time * 1000);
-                    };
-                    rafCallbackRef.current = rafCallback;
-                    gsapModule.ticker.add(rafCallback);
-                    gsapModule.ticker.lagSmoothing(0);
-                } else {
-                    // On touch: track scroll for context consumers
-                    const handleTouchScroll = () => {
-                        const progress = window.scrollY / (document.body.scrollHeight - window.innerHeight || 1);
-                        onScroll({ scroll: window.scrollY, limit: document.body.scrollHeight - window.innerHeight, progress });
-                        ScrollTriggerModule.update();
-                    };
-                    window.addEventListener("scroll", handleTouchScroll, { passive: true });
-                    (lenis as any) = { _touchScrollHandler: handleTouchScroll };
-                }
+                const rafCallback = (time: number) => {
+                    lenis.raf(time * 1000);
+                };
+                rafCallbackRef.current = rafCallback;
+                gsapModule.ticker.add(rafCallback);
+                gsapModule.ticker.lagSmoothing(0);
 
             } catch (err) {
                 console.error("SmoothScrollProvider init error:", err);
